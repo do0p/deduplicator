@@ -173,8 +173,18 @@ func TestScan_ProgressPhaseAndCounts(t *testing.T) {
 	if len(phases) == 0 {
 		t.Fatal("expected at least one progress event")
 	}
-	if phases[0] != "scanning" {
-		t.Fatalf("first phase should be 'scanning', got %q", phases[0])
+	if phases[0] != "walking" {
+		t.Fatalf("first phase should be 'walking', got %q", phases[0])
+	}
+	hasScanningPhase := false
+	for _, ph := range phases {
+		if ph == "scanning" {
+			hasScanningPhase = true
+			break
+		}
+	}
+	if !hasScanningPhase {
+		t.Fatal("expected at least one 'scanning' phase event")
 	}
 	if maxScanned != 2 {
 		t.Fatalf("expected max scanned count of 2, got %d", maxScanned)

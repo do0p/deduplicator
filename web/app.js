@@ -70,7 +70,7 @@ async function loadTree(path, container, depth = 0) {
       if (children.style.display === 'none') {
         if (!loaded) {
           expander.textContent = '⋯';
-          await loadTree(e.path, children, 0);
+          await loadTree(e.path, children, depth + 1);
           loaded = true;
         }
         children.style.display = 'block';
@@ -104,10 +104,14 @@ function startProgress() {
   const bar = $('progress-bar');
   const counter = $('counter');
   const phaseLabel = $('phase-label');
+  const title = $('progress-title');
 
   bar.value = 0;
   bar.max = 100;
   counter.textContent = '';
+  title.textContent = 'Scanning…';
+
+  let closedIntentionally = false;
 
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}/ws`);
@@ -115,28 +119,53 @@ function startProgress() {
   ws.onmessage = e => {
     const p = JSON.parse(e.data);
 
-    if (p.phase === 'scanning') {
-      phaseLabel.textContent = 'Scanning files…';
+    if (p.phase === 'walking') {
+      title.textContent = 'Walking directories…';
+      phaseLabel.textContent = 'Collecting image files…';
+      bar.removeAttribute('value'); // indeterminate
+      counter.textContent = '';
+    } else if (p.phase === 'scanning') {
+      title.textContent = 'Hashing images…';
+      phaseLabel.textContent = 'Computing perceptual hashes…';
       if (p.total > 0) {
         bar.value = p.scanned;
         bar.max = p.total;
         counter.textContent = p.scanned.toLocaleString() + ' / ' + p.total.toLocaleString() + ' files';
       }
     } else if (p.phase === 'matching') {
-      phaseLabel.textContent = 'Finding duplicates…';
+      title.textContent = 'Matching duplicates…';
+      phaseLabel.textContent = 'Comparing hashes…';
       bar.value = bar.max = 1;
       counter.textContent = p.total.toLocaleString() + ' files hashed';
     } else if (p.phase === 'done') {
+      closedIntentionally = true;
       ws.close();
       loadResults();
     } else if (p.phase === 'error') {
+      title.textContent = 'Error';
       phaseLabel.textContent = 'Error: ' + (p.error || 'unknown');
       counter.textContent = '';
     }
   };
 
-  ws.onerror = () => {
-    phaseLabel.textContent = 'Connection error. Please reload.';
+  ws.onerror = () => { /* onclose handles recovery */ };
+
+  ws.onclose = async () => {
+    if (closedIntentionally) return;
+    // Unexpected disconnect — check if scan finished while we were disconnected.
+    try {
+      const res = await fetch('/api/status');
+      const status = await res.json();
+      if (status.phase === 'done') {
+        loadResults();
+        return;
+      }
+      if (status.phase === 'error') {
+        phaseLabel.textContent = 'Error: ' + (status.error || 'unknown');
+        return;
+      }
+    } catch (_) { /* ignore fetch errors */ }
+    phaseLabel.textContent = 'Connection lost. Start a new scan or reload.';
   };
 }
 
@@ -333,13 +362,21 @@ $('btn-scan').addEventListener('click', async () => {
   }
 });
 
-// ---- New scan ----
-$('btn-new-scan').addEventListener('click', async () => {
+// ---- New scan (results view + progress abort button) ----
+async function goToSetup() {
+  if (ws) {
+    ws.onclose = null; // suppress reconnect logic
+    ws.close();
+    ws = null;
+  }
   selectedDirs.clear();
   $('btn-scan').disabled = true;
   showView('setup');
   await loadTree('', $('folder-tree'));
-});
+}
+
+$('btn-new-scan').addEventListener('click', goToSetup);
+$('btn-abort').addEventListener('click', goToSetup);
 
 // ---- Helpers ----
 function escHtml(s) {

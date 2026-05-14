@@ -54,6 +54,9 @@ func dirInode(path string) (inodeKey, error) {
 }
 
 func Scan(dirs []string, ignorePatterns []*regexp.Regexp, progress chan<- Progress) ([]FileRecord, error) {
+	progress <- Progress{Phase: "walking"}
+	log.Printf("walk starting: dirs=%v", dirs)
+
 	var paths []string
 	for _, dir := range dirs {
 		rootInode, err := dirInode(dir)
@@ -107,6 +110,8 @@ func Scan(dirs []string, ignorePatterns []*regexp.Regexp, progress chan<- Progre
 	}
 
 	total := len(paths)
+	log.Printf("walk complete: found %d image files", total)
+	log.Printf("hashing started: %d files", total)
 	progress <- Progress{Phase: "scanning", Scanned: 0, Total: total}
 
 	workers := runtime.NumCPU() * 2
@@ -141,6 +146,7 @@ func Scan(dirs []string, ignorePatterns []*regexp.Regexp, progress chan<- Progre
 	}
 	close(work)
 	wg.Wait()
+	log.Printf("hashing complete: %d/%d files successfully hashed", len(records), total)
 
 	return records, nil
 }

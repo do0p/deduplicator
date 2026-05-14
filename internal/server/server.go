@@ -227,9 +227,11 @@ func (s *Server) runScan(dirs []string, patterns []*regexp.Regexp, threshold int
 		return
 	}
 
+	log.Printf("matching started: %d records", len(records))
 	progress <- scanner.Progress{Phase: "matching", Scanned: len(records), Total: len(records)}
 
 	groups := matcher.FindDuplicates(records, threshold)
+	log.Printf("matching complete: %d duplicate groups found", len(groups))
 
 	s.state.mu.Lock()
 	s.state.results = groups
