@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/corona10/goimagehash"
@@ -41,14 +42,47 @@ type Progress struct {
 	Error   string `json:"error,omitempty"`
 }
 
+// inodeKey uniquely identifies a directory on a filesystem.
+type inodeKey struct{ dev, ino uint64 }
+
+func dirInode(path string) (inodeKey, error) {
+	var st syscall.Stat_t
+	if err := syscall.Lstat(path, &st); err != nil {
+		return inodeKey{}, err
+	}
+	return inodeKey{uint64(st.Dev), uint64(st.Ino)}, nil
+}
+
 func Scan(dirs []string, ignorePatterns []*regexp.Regexp, progress chan<- Progress) ([]FileRecord, error) {
 	var paths []string
 	for _, dir := range dirs {
-		err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		rootInode, err := dirInode(dir)
+		if err != nil {
+			log.Printf("cannot stat %s: %v", dir, err)
+			continue
+		}
+		// visited tracks inodes of directories we have entered to detect
+		// cycles caused by NTFS junctions or symlinks that lead back to a
+		// parent directory (which would otherwise make the walk escape the
+		// selected folder and scan the entire mount).
+		visited := map[inodeKey]bool{rootInode: true}
+
+		err = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
 				return nil
 			}
 			if d.IsDir() {
+				if path != dir {
+					key, err := dirInode(path)
+					if err != nil {
+						return filepath.SkipDir
+					}
+					if visited[key] {
+						log.Printf("cycle detected at %s — skipping", path)
+						return filepath.SkipDir
+					}
+					visited[key] = true
+				}
 				return nil
 			}
 			ext := strings.ToLower(filepath.Ext(path))

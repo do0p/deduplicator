@@ -180,3 +180,80 @@ func TestScan_ProgressPhaseAndCounts(t *testing.T) {
 		t.Fatalf("expected max scanned count of 2, got %d", maxScanned)
 	}
 }
+
+// TestDirInode verifies that dirInode returns a stable, unique identifier.
+func TestDirInode_SamePathSameInode(t *testing.T) {
+	dir := t.TempDir()
+	a, err := dirInode(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := dirInode(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a != b {
+		t.Fatalf("same path returned different inodes: %+v vs %+v", a, b)
+	}
+}
+
+func TestDirInode_DifferentPathsDifferentInodes(t *testing.T) {
+	a := t.TempDir()
+	b := t.TempDir()
+	ia, err := dirInode(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ib, err := dirInode(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ia == ib {
+		t.Fatalf("different directories returned the same inode: %+v", ia)
+	}
+}
+
+// TestScan_DoesNotEscapeViaSymlink verifies that the scanner does not follow a
+// symlink inside the selected directory that points to an ancestor, which would
+// cause it to scan files outside the selected folder.
+//
+// Note: filepath.WalkDir does not follow non-root symlinks, so this test
+// validates the existing behaviour. The inode-based cycle detection additionally
+// guards against NTFS directory junctions (which appear as real directories in
+// Linux Docker containers) and any future case where a directory entry is
+// followed into an ancestor.
+func TestScan_DoesNotEscapeViaSymlink(t *testing.T) {
+	// Layout:
+	//   root/
+	//     outside.png          ← must NOT be scanned
+	//     sub/
+	//       inside.png         ← must be scanned
+	//       link -> ../../root ← symlink pointing to root (ancestor)
+	root := t.TempDir()
+	sub := filepath.Join(root, "sub")
+	if err := os.Mkdir(sub, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	createTestPNG(t, root, "outside.png", color.RGBA{200, 0, 0, 255})
+	createTestPNG(t, sub, "inside.png", color.RGBA{0, 200, 0, 255})
+
+	// Symlink inside sub/ pointing to root (ancestor).
+	if err := os.Symlink(root, filepath.Join(sub, "link")); err != nil {
+		t.Fatal(err)
+	}
+
+	// Scan only sub/ — must find exactly 1 file (inside.png).
+	progress := make(chan Progress, 200)
+	records, err := Scan([]string{sub}, nil, progress)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record (only inside sub/), got %d — scanner escaped the selected directory", len(records))
+	}
+	if filepath.Base(records[0].Path) != "inside.png" {
+		t.Fatalf("unexpected file scanned: %s", records[0].Path)
+	}
+}
