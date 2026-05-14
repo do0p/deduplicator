@@ -5,6 +5,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/dominik/duplicates/internal/scanner"
+	"github.com/gorilla/websocket"
 )
 
 func newTestServer(mountRoot string) *Server {
@@ -242,4 +246,90 @@ func TestDeduplicateDirs_MixedDepths(t *testing.T) {
 			t.Fatalf("/mnt/photos/2023 should have been deduped by /mnt/photos, got %v", result)
 		}
 	}
+}
+
+// ---- WebSocket behaviour ----
+
+// wsURL converts an httptest server URL (http://...) to a ws:// URL.
+func wsURL(srv *httptest.Server, path string) string {
+	return "ws" + strings.TrimPrefix(srv.URL, "http") + path
+}
+
+func TestWS_ReceivesInitialState(t *testing.T) {
+	s := newTestServer("/mnt")
+
+	// Seed a known scan state.
+	s.state.mu.Lock()
+	s.state.phase = "scanning"
+	s.state.scanned = 42
+	s.state.total = 100
+	s.state.mu.Unlock()
+
+	mux := http.NewServeMux()
+	s.RegisterRoutes(mux)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL(srv, "/ws"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	var p scanner.Progress
+	if err := conn.ReadJSON(&p); err != nil {
+		t.Fatalf("reading initial state: %v", err)
+	}
+
+	if p.Phase != "scanning" {
+		t.Errorf("expected phase=scanning, got %q", p.Phase)
+	}
+	if p.Scanned != 42 {
+		t.Errorf("expected scanned=42, got %d", p.Scanned)
+	}
+	if p.Total != 100 {
+		t.Errorf("expected total=100, got %d", p.Total)
+	}
+}
+
+func TestWS_SubscriberCleanedUpOnDisconnect(t *testing.T) {
+	s := newTestServer("/mnt")
+	mux := http.NewServeMux()
+	s.RegisterRoutes(mux)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL(srv, "/ws"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Consume the initial state message so the server's write doesn't block.
+	conn.ReadJSON(&scanner.Progress{})
+
+	// Verify the subscriber was registered.
+	s.subs.mu.Lock()
+	before := len(s.subs.list)
+	s.subs.mu.Unlock()
+	if before != 1 {
+		t.Fatalf("expected 1 subscriber after connect, got %d", before)
+	}
+
+	// Close the connection from the client side.
+	conn.Close()
+
+	// The read pump in handleWS should detect the close and unsubscribe.
+	// Poll for up to 500 ms — typically resolves in < 10 ms.
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		s.subs.mu.Lock()
+		n := len(s.subs.list)
+		s.subs.mu.Unlock()
+		if n == 0 {
+			return // cleaned up in time — test passes
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	t.Fatal("subscriber not removed within 500 ms of client disconnect")
 }

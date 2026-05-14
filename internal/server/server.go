@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -285,7 +284,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	ch := s.subs.subscribe()
 	defer s.subs.unsubscribe(ch)
 
-	// Send current state immediately on connect
+	// Send current state immediately on connect.
 	s.state.mu.RLock()
 	initial := scanner.Progress{
 		Phase:   s.state.phase,
@@ -298,15 +297,32 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	workers := runtime.NumCPU()
-	_ = workers
-
-	for p := range ch {
-		if err := conn.WriteJSON(p); err != nil {
-			return
+	// Read pump: detects browser disconnect via a failed read so the write
+	// loop below exits immediately rather than waiting for the next event.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
 		}
-		if p.Phase == "done" || p.Phase == "error" {
+	}()
+
+	for {
+		select {
+		case <-done:
 			return
+		case p, ok := <-ch:
+			if !ok {
+				return
+			}
+			if err := conn.WriteJSON(p); err != nil {
+				return
+			}
+			if p.Phase == "done" || p.Phase == "error" {
+				return
+			}
 		}
 	}
 }
