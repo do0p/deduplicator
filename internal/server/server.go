@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dominik/duplicates/internal/matcher"
 	"github.com/dominik/duplicates/internal/scanner"
@@ -72,7 +74,18 @@ func (s *subscribers) broadcast(p scanner.Progress) {
 }
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	// Allow only same-host origins to prevent cross-site WebSocket hijacking.
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true // non-browser clients (curl, tests)
+		}
+		u, err := url.Parse(origin)
+		if err != nil {
+			return false
+		}
+		return u.Host == r.Host
+	},
 }
 
 func New(mountRoot string, webFS http.Handler) *Server {
@@ -157,9 +170,14 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func isBusyPhase(phase string) bool {
+	return phase == "walking" || phase == "scanning" || phase == "matching"
+}
+
 func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
+	// Fast pre-check (read lock, avoids parse work when obviously busy).
 	s.state.mu.RLock()
-	busy := s.state.phase == "walking" || s.state.phase == "scanning" || s.state.phase == "matching"
+	busy := isBusyPhase(s.state.phase)
 	s.state.mu.RUnlock()
 	if busy {
 		http.Error(w, "scan already running", http.StatusConflict)
@@ -209,6 +227,17 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	if threshold < 0 {
 		threshold = 0
 	}
+
+	// Atomically claim the "walking" slot to prevent a TOCTOU race where two
+	// concurrent requests both pass the fast pre-check above.
+	s.state.mu.Lock()
+	if isBusyPhase(s.state.phase) {
+		s.state.mu.Unlock()
+		http.Error(w, "scan already running", http.StatusConflict)
+		return
+	}
+	s.state.phase = "walking"
+	s.state.mu.Unlock()
 
 	w.WriteHeader(http.StatusAccepted)
 
@@ -301,9 +330,20 @@ func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	// Serve with cache headers for thumbnails
+	// Resolve symlinks before serving: http.ServeFile follows OS-level symlinks,
+	// so a symlink inside mountRoot pointing outside would bypass the string
+	// prefix check above. Re-validate the real path after resolution.
+	real, err := filepath.EvalSymlinks(safe)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if _, ok := s.safePath(real); !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	w.Header().Set("Cache-Control", "public, max-age=3600")
-	http.ServeFile(w, r, safe)
+	http.ServeFile(w, r, real)
 }
 
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
@@ -326,6 +366,9 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		Error:   s.state.errMsg,
 	}
 	s.state.mu.RUnlock()
+	const wsWriteTimeout = 10 * time.Second
+
+	conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
 	if err := conn.WriteJSON(initial); err != nil {
 		return
 	}
@@ -350,6 +393,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
+			conn.SetWriteDeadline(time.Now().Add(wsWriteTimeout))
 			if err := conn.WriteJSON(p); err != nil {
 				return
 			}
