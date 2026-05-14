@@ -33,6 +33,45 @@ async function loadTree(path, container, depth = 0) {
   const entries = await res.json();
 
   container.innerHTML = '';
+
+  // At the root level, prepend a node representing the mount root itself so
+  // the user can select all folders with a single click.
+  if (depth === 0 && entries && entries.length > 0) {
+    const rootPath = entries[0].path.substring(0, entries[0].path.lastIndexOf('/'));
+    if (rootPath) {
+      const rootItem = document.createElement('div');
+      rootItem.className = 'tree-item tree-root';
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.title = 'Select all folders';
+      cb.addEventListener('change', () => {
+        if (cb.checked) selectedDirs.add(rootPath);
+        else selectedDirs.delete(rootPath);
+        $('btn-scan').disabled = selectedDirs.size === 0;
+      });
+
+      const icon = document.createElement('span');
+      icon.className = 'icon';
+      icon.textContent = '🗄️';
+
+      const label = document.createElement('span');
+      label.className = 'root-label';
+      label.textContent = rootPath;
+
+      const hint = document.createElement('span');
+      hint.className = 'root-hint';
+      hint.textContent = 'all folders';
+
+      rootItem.append(cb, icon, label, hint);
+      container.appendChild(rootItem);
+
+      const sep = document.createElement('div');
+      sep.className = 'tree-separator';
+      container.appendChild(sep);
+    }
+  }
+
   for (const e of entries || []) {
     if (!e.isDir) continue;
 

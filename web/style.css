@@ -54,6 +54,18 @@ header .badge {
 .tree-item .icon { color: #fbbf24; font-size: 0.85rem; }
 .tree-item .expander { color: #64748b; font-size: 0.75rem; width: 1rem; text-align: center; }
 .tree-children { padding-left: 1.4rem; }
+.tree-root { font-weight: 600; }
+.tree-root .root-label { color: #e2e8f0; }
+.tree-root .root-hint {
+  font-size: 0.75rem;
+  color: #475569;
+  margin-left: 0.4rem;
+  font-weight: 400;
+}
+.tree-separator {
+  border-top: 1px solid #2d3148;
+  margin: 4px 2px;
+}
 
 textarea {
   width: 100%;
