@@ -96,6 +96,11 @@ func Scan(dirs []string, ignorePatterns []*regexp.Regexp, progress chan<- Progre
 			}
 			if d.IsDir() {
 				if path != dir {
+					for _, re := range ignorePatterns {
+						if re.MatchString(path) {
+							return filepath.SkipDir
+						}
+					}
 					key, err := dirInode(path)
 					if err != nil {
 						return filepath.SkipDir

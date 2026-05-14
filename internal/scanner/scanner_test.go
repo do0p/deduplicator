@@ -109,6 +109,33 @@ func TestScan_IgnorePattern(t *testing.T) {
 	}
 }
 
+func TestScan_IgnorePatternSkipsDirectory(t *testing.T) {
+	// The ignore pattern must cause WalkDir to skip the entire matching
+	// directory, not just filter its files after entering it.
+	dir := t.TempDir()
+	createTestPNG(t, dir, "keep.png", color.White)
+
+	// Create a subdirectory whose name matches the ignore pattern.
+	skipDir := filepath.Join(dir, "@eaDir")
+	if err := os.Mkdir(skipDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	createTestPNG(t, skipDir, "thumb.png", color.White)
+
+	re := regexp.MustCompile(`@eaDir`)
+	progress := make(chan Progress, 100)
+	records, err := Scan([]string{dir}, []*regexp.Regexp{re}, progress)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record (directory skipped entirely), got %d", len(records))
+	}
+	if filepath.Base(records[0].Path) != "keep.png" {
+		t.Fatalf("expected keep.png, got %s", records[0].Path)
+	}
+}
+
 func TestScan_MultipleIgnorePatterns(t *testing.T) {
 	dir := t.TempDir()
 	createTestPNG(t, dir, "keep.png", color.White)
