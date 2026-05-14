@@ -53,22 +53,42 @@ func dirInode(path string) (inodeKey, error) {
 	return inodeKey{uint64(st.Dev), uint64(st.Ino)}, nil
 }
 
+// ancestorInodes returns the inodes of dir and every ancestor up to the
+// filesystem root. Pre-loading ancestors ensures that any junction or bind
+// mount inside dir that points back to a parent is detected immediately on
+// entry rather than only when the walk circles back to dir itself.
+func ancestorInodes(dir string) (map[inodeKey]bool, error) {
+	visited := map[inodeKey]bool{}
+	current := filepath.Clean(dir)
+	for {
+		key, err := dirInode(current)
+		if err != nil {
+			return nil, err
+		}
+		visited[key] = true
+		parent := filepath.Dir(current)
+		if parent == current {
+			break // reached filesystem root
+		}
+		current = parent
+	}
+	return visited, nil
+}
+
 func Scan(dirs []string, ignorePatterns []*regexp.Regexp, progress chan<- Progress) ([]FileRecord, error) {
 	progress <- Progress{Phase: "walking"}
 	log.Printf("walk starting: dirs=%v", dirs)
 
 	var paths []string
 	for _, dir := range dirs {
-		rootInode, err := dirInode(dir)
+		// Pre-load inodes of dir and all its ancestors so that any NTFS
+		// junction or bind-mount that escapes upward is detected immediately.
+		visited, err := ancestorInodes(dir)
 		if err != nil {
 			log.Printf("cannot stat %s: %v", dir, err)
 			continue
 		}
-		// visited tracks inodes of directories we have entered to detect
-		// cycles caused by NTFS junctions or symlinks that lead back to a
-		// parent directory (which would otherwise make the walk escape the
-		// selected folder and scan the entire mount).
-		visited := map[inodeKey]bool{rootInode: true}
+		log.Printf("ancestor inode preload: %d inodes for %s", len(visited), dir)
 
 		err = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 			if err != nil {

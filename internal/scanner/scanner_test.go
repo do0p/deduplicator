@@ -191,6 +191,87 @@ func TestScan_ProgressPhaseAndCounts(t *testing.T) {
 	}
 }
 
+// TestAncestorInodes_ContainsAllLevels verifies that ancestorInodes includes the
+// directory itself and each ancestor up to the filesystem root.
+func TestAncestorInodes_ContainsAllLevels(t *testing.T) {
+	// t.TempDir() returns something like /tmp/TestXxx123/001; its parent (/tmp/TestXxx123)
+	// and grandparent (/tmp) must also appear in the set.
+	dir := t.TempDir()
+
+	visited, err := ancestorInodes(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// dir itself
+	selfKey, err := dirInode(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !visited[selfKey] {
+		t.Fatalf("ancestorInodes: dir %s not in set", dir)
+	}
+
+	// parent
+	parentKey, err := dirInode(filepath.Dir(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !visited[parentKey] {
+		t.Fatalf("ancestorInodes: parent of %s not in set", dir)
+	}
+
+	// grandparent
+	grandparentKey, err := dirInode(filepath.Dir(filepath.Dir(dir)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !visited[grandparentKey] {
+		t.Fatalf("ancestorInodes: grandparent of %s not in set", dir)
+	}
+}
+
+// TestAncestorInodes_ParentInodeBlocksDirectorySibling verifies that a
+// subdirectory whose inode matches an ancestor causes the scanner to skip it.
+// We approximate the NTFS-junction-to-parent scenario by scanning a temp dir
+// that contains a nested subdirectory; the ancestor set is pre-loaded from an
+// outer parent dir, so any inner dir that (hypothetically) shares its inode
+// with that parent would be skipped by the walk.
+//
+// We cannot create real NTFS junctions on Linux, but this test validates that
+// ancestorInodes correctly covers the path ancestry chain.
+func TestAncestorInodes_DepthGrowsWithNesting(t *testing.T) {
+	root := t.TempDir()
+	sub := filepath.Join(root, "a", "b", "c")
+	if err := os.MkdirAll(sub, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	visitedFromRoot, err := ancestorInodes(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	visitedFromSub, err := ancestorInodes(sub)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Scanning from sub must cover strictly more ancestors than scanning from root.
+	if len(visitedFromSub) <= len(visitedFromRoot) {
+		t.Fatalf("expected deeper path to yield more ancestors: root=%d sub=%d",
+			len(visitedFromRoot), len(visitedFromSub))
+	}
+
+	// root's inode must appear in the sub's ancestor set (used to block escapes).
+	rootKey, err := dirInode(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !visitedFromSub[rootKey] {
+		t.Fatalf("ancestorInodes for sub must include root's inode (junction-to-parent guard)")
+	}
+}
+
 // TestDirInode verifies that dirInode returns a stable, unique identifier.
 func TestDirInode_SamePathSameInode(t *testing.T) {
 	dir := t.TempDir()
