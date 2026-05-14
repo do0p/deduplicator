@@ -98,6 +98,15 @@ async function loadTree(path, container, depth = 0) {
 // ---- View 2: Progress ----
 let ws = null;
 
+function fmtDuration(ms) {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return '~' + s + 's';
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  if (m < 60) return '~' + m + 'm ' + rem + 's';
+  return '> 1h';
+}
+
 function startProgress() {
   showView('progress');
 
@@ -112,6 +121,7 @@ function startProgress() {
   title.textContent = 'Scanning…';
 
   let closedIntentionally = false;
+  let hashStartTime = null;
 
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}/ws`);
@@ -130,7 +140,21 @@ function startProgress() {
       if (p.total > 0) {
         bar.value = p.scanned;
         bar.max = p.total;
-        counter.textContent = p.scanned.toLocaleString() + ' / ' + p.total.toLocaleString() + ' files';
+
+        if (p.scanned > 0 && !hashStartTime) hashStartTime = Date.now();
+
+        let eta = '';
+        if (hashStartTime && p.scanned > 0) {
+          const elapsed = Date.now() - hashStartTime;
+          // Only show ETA after 5 s of data to avoid wild early estimates.
+          if (elapsed >= 5000) {
+            const msPerFile = elapsed / p.scanned;
+            const remaining = (p.total - p.scanned) * msPerFile;
+            eta = ' · ' + fmtDuration(remaining) + ' remaining';
+          }
+        }
+
+        counter.textContent = p.scanned.toLocaleString() + ' / ' + p.total.toLocaleString() + ' files' + eta;
       }
     } else if (p.phase === 'matching') {
       title.textContent = 'Matching duplicates…';
