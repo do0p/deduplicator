@@ -1,0 +1,11 @@
+services:
+  duplicates:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - /path/to/your/photos:/mnt:ro
+    environment:
+      MOUNT_ROOT: /mnt
+      PORT: "8080"
+    restart: unless-stopped

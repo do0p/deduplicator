@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Duplicate Image Finder</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header>
+  <h1>Duplicate Image Finder</h1>
+  <span class="badge">pHash</span>
+</header>
+
+<!-- VIEW 1: Setup -->
+<div id="view-setup" class="view active">
+  <div class="form-group">
+    <div class="section-title">Select folders to scan</div>
+    <div class="folder-tree" id="folder-tree">
+      <div style="color:#64748b;font-size:0.85rem;padding:0.5rem">Loading…</div>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label>Ignore patterns (regex, one per line)</label>
+    <textarea id="ignore-patterns" placeholder="\.thumb\.\nThumbnails/\n_preview_"></textarea>
+  </div>
+
+  <div class="form-group">
+    <label>Similarity threshold — Hamming distance (0 = exact only, 20 = very similar)</label>
+    <div class="threshold-row">
+      <input type="range" id="threshold" min="0" max="20" value="10">
+      <span class="val" id="threshold-val">10</span>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" id="btn-scan" disabled>Start scan</button>
+</div>
+
+<!-- VIEW 2: Progress -->
+<div id="view-progress" class="view">
+  <div class="progress-wrap">
+    <h2>Scanning…</h2>
+    <div class="phase-label" id="phase-label">Preparing…</div>
+    <progress id="progress-bar" value="0" max="100"></progress>
+    <div class="counter" id="counter"></div>
+  </div>
+</div>
+
+<!-- VIEW 3: Results -->
+<div id="view-results" class="view">
+  <div class="results-header">
+    <div>
+      <h2>Duplicate groups</h2>
+      <div class="stats" id="stats"></div>
+    </div>
+    <button class="btn btn-secondary" id="btn-new-scan">New scan</button>
+  </div>
+
+  <div class="filter-row">
+    <input type="search" id="filter-input" placeholder="Filter by filename…">
+  </div>
+
+  <table id="results-table">
+    <thead>
+      <tr>
+        <th data-col="name">Filename <span class="sort-icon">↕</span></th>
+        <th data-col="count">Files <span class="sort-icon">↕</span></th>
+        <th data-col="size">Total size <span class="sort-icon">↕</span></th>
+      </tr>
+    </thead>
+    <tbody id="results-body"></tbody>
+  </table>
+  <div id="no-results" class="no-results" style="display:none">No duplicate groups found.</div>
+</div>
+
+<!-- Modal -->
+<div class="modal-backdrop" id="modal">
+  <button class="modal-close" id="modal-close">&times;</button>
+  <img id="modal-img" src="" alt="">
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

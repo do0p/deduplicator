@@ -1,0 +1,148 @@
+package matcher
+
+import (
+	"math/bits"
+	"runtime"
+	"sync"
+
+	"github.com/dominik/duplicates/internal/scanner"
+)
+
+type DuplicateGroup struct {
+	Files []scanner.FileRecord `json:"files"`
+}
+
+// unionFind is a simple non-concurrent Union-Find over integer indices.
+type unionFind struct {
+	parent []int
+}
+
+func newUnionFind(n int) *unionFind {
+	p := make([]int, n)
+	for i := range p {
+		p[i] = i
+	}
+	return &unionFind{p}
+}
+
+func (u *unionFind) find(x int) int {
+	for u.parent[x] != x {
+		u.parent[x] = u.parent[u.parent[x]]
+		x = u.parent[x]
+	}
+	return x
+}
+
+func (u *unionFind) union(a, b int) {
+	ra, rb := u.find(a), u.find(b)
+	if ra != rb {
+		u.parent[ra] = rb
+	}
+}
+
+func hamming(a, b uint64) int {
+	return bits.OnesCount64(a ^ b)
+}
+
+// FindDuplicates groups records into duplicate sets.
+// Pass 1: exact pHash match (O(n)).
+// Pass 2: near-duplicate Hamming distance (parallel O(n²)).
+func FindDuplicates(records []scanner.FileRecord, threshold int) []DuplicateGroup {
+	// Pass 1: exact grouping
+	byHash := map[uint64][]int{} // hash → indices into records
+	for i, r := range records {
+		byHash[r.Hash] = append(byHash[r.Hash], i)
+	}
+
+	// Indices already grouped exactly; singletons go to near-dup pass
+	used := make([]bool, len(records))
+	var exactGroups [][]int
+	var singletons []int
+
+	for _, idxs := range byHash {
+		if len(idxs) > 1 {
+			exactGroups = append(exactGroups, idxs)
+			for _, i := range idxs {
+				used[i] = true
+			}
+		} else {
+			singletons = append(singletons, idxs[0])
+		}
+	}
+
+	// Pass 2: near-duplicate detection among singletons
+	n := len(singletons)
+	uf := newUnionFind(n)
+
+	if threshold > 0 && n > 1 {
+		numCPU := runtime.NumCPU()
+		bandSize := (n + numCPU - 1) / numCPU
+
+		var mu sync.Mutex
+		var wg sync.WaitGroup
+
+		for band := 0; band < numCPU; band++ {
+			start := band * bandSize
+			end := start + bandSize
+			if end > n {
+				end = n
+			}
+			if start >= n {
+				break
+			}
+
+			wg.Add(1)
+			go func(rowStart, rowEnd int) {
+				defer wg.Done()
+				var pairs [][2]int
+				for i := rowStart; i < rowEnd; i++ {
+					for j := i + 1; j < n; j++ {
+						if hamming(records[singletons[i]].Hash, records[singletons[j]].Hash) <= threshold {
+							pairs = append(pairs, [2]int{i, j})
+						}
+					}
+				}
+				if len(pairs) > 0 {
+					mu.Lock()
+					for _, p := range pairs {
+						uf.union(p[0], p[1])
+					}
+					mu.Unlock()
+				}
+			}(start, end)
+		}
+		wg.Wait()
+	}
+
+	// Collect near-dup groups from Union-Find
+	nearGroups := map[int][]int{} // root → singleton indices
+	for i := range singletons {
+		root := uf.find(i)
+		nearGroups[root] = append(nearGroups[root], i)
+	}
+
+	// Build result
+	var groups []DuplicateGroup
+
+	for _, idxs := range exactGroups {
+		g := DuplicateGroup{}
+		for _, i := range idxs {
+			g.Files = append(g.Files, records[i])
+		}
+		groups = append(groups, g)
+	}
+
+	for _, singIdxs := range nearGroups {
+		if len(singIdxs) < 2 {
+			continue
+		}
+		g := DuplicateGroup{}
+		for _, si := range singIdxs {
+			g.Files = append(g.Files, records[singletons[si]])
+		}
+		groups = append(groups, g)
+	}
+
+	_ = used // used to mark exact-grouped items; near-dup pass only considers singletons
+	return groups
+}
