@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 
@@ -158,13 +159,25 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate all dirs are within mountRoot
+	if len(req.Dirs) == 0 {
+		http.Error(w, "no directories selected", http.StatusBadRequest)
+		return
+	}
+
+	// Validate all dirs are within mountRoot.
+	var safeDirs []string
 	for _, d := range req.Dirs {
-		if _, ok := s.safePath(d); !ok {
+		safe, ok := s.safePath(d)
+		if !ok {
 			http.Error(w, "forbidden path: "+d, http.StatusForbidden)
 			return
 		}
+		safeDirs = append(safeDirs, safe)
 	}
+
+	// Deduplicate: remove any dir that is a subdirectory of another selected dir.
+	safeDirs = deduplicateDirs(safeDirs)
+	log.Printf("scan starting: dirs=%v threshold=%d", safeDirs, req.Threshold)
 
 	var patterns []*regexp.Regexp
 	for _, raw := range req.IgnoreRegexes {
@@ -186,7 +199,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusAccepted)
 
-	go s.runScan(req.Dirs, patterns, threshold)
+	go s.runScan(safeDirs, patterns, threshold)
 }
 
 func (s *Server) runScan(dirs []string, patterns []*regexp.Regexp, threshold int) {
@@ -301,4 +314,26 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(v)
+}
+
+// deduplicateDirs removes any dir that is a subdirectory of another dir in the list,
+// preventing the same files from being scanned twice.
+func deduplicateDirs(dirs []string) []string {
+	// Sort by path length so parents come before children.
+	sort.Slice(dirs, func(i, j int) bool { return len(dirs[i]) < len(dirs[j]) })
+
+	var result []string
+	for _, d := range dirs {
+		covered := false
+		for _, kept := range result {
+			if strings.HasPrefix(d, kept+string(filepath.Separator)) || d == kept {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			result = append(result, d)
+		}
+	}
+	return result
 }

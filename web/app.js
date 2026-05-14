@@ -66,8 +66,7 @@ async function loadTree(path, container, depth = 0) {
     children.style.display = 'none';
     let loaded = false;
 
-    expander.addEventListener('click', async ev => {
-      ev.stopPropagation();
+    async function toggleExpand() {
       if (children.style.display === 'none') {
         if (!loaded) {
           expander.textContent = '⋯';
@@ -80,12 +79,12 @@ async function loadTree(path, container, depth = 0) {
         children.style.display = 'none';
         expander.textContent = '▶';
       }
-    });
+    }
 
-    label.addEventListener('click', () => {
-      cb.checked = !cb.checked;
-      cb.dispatchEvent(new Event('change'));
-    });
+    // Expander arrow and folder label both expand/collapse — only the checkbox selects.
+    expander.addEventListener('click', ev => { ev.stopPropagation(); toggleExpand(); });
+    label.addEventListener('click', ev => { ev.stopPropagation(); toggleExpand(); });
+    icon.addEventListener('click', ev => { ev.stopPropagation(); toggleExpand(); });
 
     container.appendChild(item);
     container.appendChild(children);
@@ -335,10 +334,11 @@ $('btn-scan').addEventListener('click', async () => {
 });
 
 // ---- New scan ----
-$('btn-new-scan').addEventListener('click', () => {
+$('btn-new-scan').addEventListener('click', async () => {
   selectedDirs.clear();
   $('btn-scan').disabled = true;
   showView('setup');
+  await loadTree('', $('folder-tree'));
 });
 
 // ---- Helpers ----
