@@ -257,7 +257,7 @@ func (s *Server) handleResults(w http.ResponseWriter, r *http.Request) {
 	s.state.mu.RLock()
 	defer s.state.mu.RUnlock()
 	if s.state.phase != "done" {
-		http.Error(w, "scan not complete", http.StatusNoContent)
+		http.Error(w, "scan not complete", http.StatusConflict)
 		return
 	}
 	writeJSON(w, s.state.results)

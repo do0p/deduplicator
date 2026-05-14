@@ -171,11 +171,16 @@ function startProgress() {
 
 // ---- View 3: Results ----
 async function loadResults() {
-  const res = await fetch('/api/results');
-  if (!res.ok) { showView('setup'); return; }
-  allGroups = await res.json() || [];
-  renderResults();
-  showView('results');
+  try {
+    const res = await fetch('/api/results');
+    if (!res.ok) { showView('setup'); return; }
+    allGroups = await res.json() || [];
+    renderResults();
+    showView('results');
+  } catch (err) {
+    console.error('loadResults failed:', err);
+    showView('setup');
+  }
 }
 
 function groupTotalSize(g) {
@@ -385,19 +390,22 @@ function escHtml(s) {
 
 // ---- Init ----
 (async () => {
-  const res = await fetch('/api/status');
-  const status = await res.json();
+  try {
+    const res = await fetch('/api/status');
+    const status = await res.json();
 
-  // If a scan is already running or done, jump to the right view
-  if (status.phase === 'scanning' || status.phase === 'matching') {
-    startProgress();
-    return;
-  }
-  if (status.phase === 'done') {
-    await loadResults();
-    return;
+    if (status.phase === 'scanning' || status.phase === 'matching' || status.phase === 'walking') {
+      startProgress();
+      return;
+    }
+    if (status.phase === 'done') {
+      await loadResults();
+      return;
+    }
+  } catch (err) {
+    console.error('init status check failed:', err);
   }
 
-  // Load folder tree for setup view
+  // Default: load folder tree for setup view
   await loadTree('', $('folder-tree'));
 })();

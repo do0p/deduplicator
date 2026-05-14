@@ -29,10 +29,10 @@ var imageExts = map[string]bool{
 }
 
 type FileRecord struct {
-	Path    string
-	Hash    uint64
-	Size    int64
-	ModTime time.Time
+	Path    string    `json:"path"`
+	Hash    uint64    `json:"hash"`
+	Size    int64     `json:"size"`
+	ModTime time.Time `json:"modTime"`
 }
 
 type Progress struct {
