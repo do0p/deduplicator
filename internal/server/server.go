@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -17,10 +18,12 @@ import (
 )
 
 type Server struct {
-	mountRoot string
-	state     scanState
-	subs      subscribers
-	fs        http.Handler
+	mountRoot  string
+	state      scanState
+	subs       subscribers
+	fs         http.Handler
+	cancelScan context.CancelFunc
+	cancelMu   sync.Mutex
 }
 
 type scanState struct {
@@ -79,6 +82,7 @@ func New(mountRoot string, webFS http.Handler) *Server {
 func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/browse", s.handleBrowse)
 	mux.HandleFunc("POST /api/scan", s.handleScan)
+	mux.HandleFunc("POST /api/cancel", s.handleCancel)
 	mux.HandleFunc("GET /api/status", s.handleStatus)
 	mux.HandleFunc("GET /api/results", s.handleResults)
 	mux.HandleFunc("GET /api/image", s.handleImage)
@@ -143,9 +147,19 @@ type scanRequest struct {
 	Threshold     int      `json:"threshold"`
 }
 
+func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
+	s.cancelMu.Lock()
+	cancel := s.cancelScan
+	s.cancelMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	s.state.mu.RLock()
-	busy := s.state.phase == "scanning" || s.state.phase == "matching"
+	busy := s.state.phase == "walking" || s.state.phase == "scanning" || s.state.phase == "matching"
 	s.state.mu.RUnlock()
 	if busy {
 		http.Error(w, "scan already running", http.StatusConflict)
@@ -202,9 +216,22 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) runScan(dirs []string, patterns []*regexp.Regexp, threshold int) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	s.cancelMu.Lock()
+	s.cancelScan = cancel
+	s.cancelMu.Unlock()
+
+	defer func() {
+		cancel()
+		s.cancelMu.Lock()
+		s.cancelScan = nil
+		s.cancelMu.Unlock()
+	}()
+
 	progress := make(chan scanner.Progress, 128)
 
-	// Fan out progress to WebSocket subscribers and update shared state
+	// Fan out progress to WebSocket subscribers and update shared state.
 	go func() {
 		for p := range progress {
 			s.state.mu.Lock()
@@ -219,10 +246,14 @@ func (s *Server) runScan(dirs []string, patterns []*regexp.Regexp, threshold int
 		}
 	}()
 
-	records, err := scanner.Scan(dirs, patterns, progress)
+	records, err := scanner.Scan(ctx, dirs, patterns, progress)
 	if err != nil {
-		errProgress := scanner.Progress{Phase: "error", Error: err.Error()}
-		progress <- errProgress
+		if ctx.Err() != nil {
+			log.Printf("scan cancelled")
+			progress <- scanner.Progress{Phase: "cancelled"}
+		} else {
+			progress <- scanner.Progress{Phase: "error", Error: err.Error()}
+		}
 		close(progress)
 		return
 	}
@@ -322,7 +353,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			if err := conn.WriteJSON(p); err != nil {
 				return
 			}
-			if p.Phase == "done" || p.Phase == "error" {
+			if p.Phase == "done" || p.Phase == "error" || p.Phase == "cancelled" {
 				return
 			}
 		}

@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"context"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
@@ -75,12 +76,15 @@ func ancestorInodes(dir string) (map[inodeKey]bool, error) {
 	return visited, nil
 }
 
-func Scan(dirs []string, ignorePatterns []*regexp.Regexp, progress chan<- Progress) ([]FileRecord, error) {
+func Scan(ctx context.Context, dirs []string, ignorePatterns []*regexp.Regexp, progress chan<- Progress) ([]FileRecord, error) {
 	progress <- Progress{Phase: "walking"}
 	log.Printf("walk starting: dirs=%v", dirs)
 
 	var paths []string
 	for _, dir := range dirs {
+		if ctx.Err() != nil {
+			break
+		}
 		// Pre-load inodes of dir and all its ancestors so that any NTFS
 		// junction or bind-mount that escapes upward is detected immediately.
 		visited, err := ancestorInodes(dir)
@@ -91,6 +95,9 @@ func Scan(dirs []string, ignorePatterns []*regexp.Regexp, progress chan<- Progre
 		log.Printf("ancestor inode preload: %d inodes for %s", len(visited), dir)
 
 		err = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+			if ctx.Err() != nil {
+				return filepath.SkipAll
+			}
 			if err != nil {
 				return nil
 			}
@@ -134,6 +141,10 @@ func Scan(dirs []string, ignorePatterns []*regexp.Regexp, progress chan<- Progre
 		}
 	}
 
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	total := len(paths)
 	log.Printf("walk complete: found %d image files", total)
 	log.Printf("hashing started: %d files", total)
@@ -151,6 +162,9 @@ func Scan(dirs []string, ignorePatterns []*regexp.Regexp, progress chan<- Progre
 		go func() {
 			defer wg.Done()
 			for path := range work {
+				if ctx.Err() != nil {
+					continue // drain channel without hashing
+				}
 				rec, ok := hashFile(path)
 				if !ok {
 					scanned.Add(1)
@@ -166,13 +180,22 @@ func Scan(dirs []string, ignorePatterns []*regexp.Regexp, progress chan<- Progre
 		}()
 	}
 
+outer:
 	for _, p := range paths {
-		work <- p
+		select {
+		case work <- p:
+		case <-ctx.Done():
+			break outer
+		}
 	}
 	close(work)
 	wg.Wait()
-	log.Printf("hashing complete: %d/%d files successfully hashed", len(records), total)
 
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	log.Printf("hashing complete: %d/%d files successfully hashed", len(records), total)
 	return records, nil
 }
 

@@ -27,7 +27,18 @@ function basename(path) {
 }
 
 // ---- View 1: Folder Tree ----
-async function loadTree(path, container, depth = 0) {
+
+// Sets all checkboxes with data-path inside container to checked/unchecked,
+// updating selectedDirs accordingly.
+function setSubtreeChecked(container, checked) {
+  container.querySelectorAll('input[type=checkbox][data-path]').forEach(cb => {
+    cb.checked = checked;
+    if (checked) selectedDirs.add(cb.dataset.path);
+    else selectedDirs.delete(cb.dataset.path);
+  });
+}
+
+async function loadTree(path, container, depth = 0, parentCb = null) {
   const res = await fetch('/api/browse?path=' + encodeURIComponent(path));
   if (!res.ok) return;
   const entries = await res.json();
@@ -44,10 +55,11 @@ async function loadTree(path, container, depth = 0) {
 
       const cb = document.createElement('input');
       cb.type = 'checkbox';
+      cb.dataset.path = rootPath;
       cb.title = 'Select all folders';
       cb.addEventListener('change', () => {
-        if (cb.checked) selectedDirs.add(rootPath);
-        else selectedDirs.delete(rootPath);
+        // Cascade checked state to all visible children in the tree.
+        setSubtreeChecked($('folder-tree'), cb.checked);
         $('btn-scan').disabled = selectedDirs.size === 0;
       });
 
@@ -85,9 +97,24 @@ async function loadTree(path, container, depth = 0) {
 
     const cb = document.createElement('input');
     cb.type = 'checkbox';
+    cb.dataset.path = e.path;
+
+    // If the parent is already checked, start this node checked too.
+    if (parentCb && parentCb.checked) {
+      cb.checked = true;
+      selectedDirs.add(e.path);
+      $('btn-scan').disabled = false;
+    }
+
+    const children = document.createElement('div');
+    children.className = 'tree-children';
+    children.style.display = 'none';
+
     cb.addEventListener('change', () => {
       if (cb.checked) selectedDirs.add(e.path);
       else selectedDirs.delete(e.path);
+      // Cascade to all currently visible descendants.
+      setSubtreeChecked(children, cb.checked);
       $('btn-scan').disabled = selectedDirs.size === 0;
     });
 
@@ -100,16 +127,13 @@ async function loadTree(path, container, depth = 0) {
 
     item.append(expander, cb, icon, label);
 
-    const children = document.createElement('div');
-    children.className = 'tree-children';
-    children.style.display = 'none';
     let loaded = false;
 
     async function toggleExpand() {
       if (children.style.display === 'none') {
         if (!loaded) {
           expander.textContent = '⋯';
-          await loadTree(e.path, children, depth + 1);
+          await loadTree(e.path, children, depth + 1, cb);
           loaded = true;
         }
         children.style.display = 'block';
@@ -204,6 +228,10 @@ function startProgress() {
       closedIntentionally = true;
       ws.close();
       loadResults();
+    } else if (p.phase === 'cancelled') {
+      closedIntentionally = true;
+      ws.close();
+      // goToSetup() will be called by the cancel button click handler.
     } else if (p.phase === 'error') {
       title.textContent = 'Error';
       phaseLabel.textContent = 'Error: ' + (p.error || 'unknown');
@@ -444,7 +472,10 @@ async function goToSetup() {
 }
 
 $('btn-new-scan').addEventListener('click', goToSetup);
-$('btn-abort').addEventListener('click', goToSetup);
+$('btn-abort').addEventListener('click', async () => {
+  try { await fetch('/api/cancel', { method: 'POST' }); } catch (_) {}
+  goToSetup();
+});
 
 // ---- Helpers ----
 function escHtml(s) {

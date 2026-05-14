@@ -1,6 +1,8 @@
 package scanner
 
 import (
+	"context"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -44,7 +46,7 @@ func TestScan_BasicImages(t *testing.T) {
 	createTestPNG(t, dir, "b.png", color.RGBA{0, 255, 0, 255})
 
 	progress := make(chan Progress, 100)
-	records, err := Scan([]string{dir}, nil, progress)
+	records, err := Scan(context.Background(), []string{dir}, nil, progress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +65,7 @@ func TestScan_SkipsNonImageFiles(t *testing.T) {
 	}
 
 	progress := make(chan Progress, 100)
-	records, err := Scan([]string{dir}, nil, progress)
+	records, err := Scan(context.Background(), []string{dir}, nil, progress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +83,7 @@ func TestScan_SkipsTinyFiles(t *testing.T) {
 	createTestPNG(t, dir, "normal.png", color.Black)
 
 	progress := make(chan Progress, 100)
-	records, err := Scan([]string{dir}, nil, progress)
+	records, err := Scan(context.Background(), []string{dir}, nil, progress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +99,7 @@ func TestScan_IgnorePattern(t *testing.T) {
 
 	re := regexp.MustCompile(`_thumb`)
 	progress := make(chan Progress, 100)
-	records, err := Scan([]string{dir}, []*regexp.Regexp{re}, progress)
+	records, err := Scan(context.Background(), []string{dir}, []*regexp.Regexp{re}, progress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +126,7 @@ func TestScan_IgnorePatternSkipsDirectory(t *testing.T) {
 
 	re := regexp.MustCompile(`@eaDir`)
 	progress := make(chan Progress, 100)
-	records, err := Scan([]string{dir}, []*regexp.Regexp{re}, progress)
+	records, err := Scan(context.Background(), []string{dir}, []*regexp.Regexp{re}, progress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +149,7 @@ func TestScan_MultipleIgnorePatterns(t *testing.T) {
 		regexp.MustCompile(`_preview`),
 	}
 	progress := make(chan Progress, 100)
-	records, err := Scan([]string{dir}, patterns, progress)
+	records, err := Scan(context.Background(), []string{dir}, patterns, progress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +165,7 @@ func TestScan_IdenticalImagesHaveSameHash(t *testing.T) {
 	createTestPNG(t, dir, "img2.png", color.RGBA{100, 150, 200, 255})
 
 	progress := make(chan Progress, 100)
-	records, err := Scan([]string{dir}, nil, progress)
+	records, err := Scan(context.Background(), []string{dir}, nil, progress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +184,7 @@ func TestScan_ProgressPhaseAndCounts(t *testing.T) {
 	createTestPNG(t, dir, "b.png", color.Black)
 
 	progress := make(chan Progress, 200)
-	_, err := Scan([]string{dir}, nil, progress)
+	_, err := Scan(context.Background(), []string{dir}, nil, progress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -363,7 +365,7 @@ func TestScan_DoesNotEscapeViaSymlink(t *testing.T) {
 
 	// Scan only sub/ — must find exactly 1 file (inside.png).
 	progress := make(chan Progress, 200)
-	records, err := Scan([]string{sub}, nil, progress)
+	records, err := Scan(context.Background(), []string{sub}, nil, progress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -373,5 +375,25 @@ func TestScan_DoesNotEscapeViaSymlink(t *testing.T) {
 	}
 	if filepath.Base(records[0].Path) != "inside.png" {
 		t.Fatalf("unexpected file scanned: %s", records[0].Path)
+	}
+}
+
+// TestScan_Cancellation verifies that cancelling the context aborts the scan
+// and returns a non-nil error.
+func TestScan_Cancellation(t *testing.T) {
+	dir := t.TempDir()
+	for i := 0; i < 5; i++ {
+		createTestPNG(t, dir, fmt.Sprintf("img%d.png", i), color.White)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately before the scan even starts
+
+	progress := make(chan Progress, 200)
+	_, err := Scan(ctx, []string{dir}, nil, progress)
+	close(progress)
+
+	if err == nil {
+		t.Fatal("expected non-nil error when context is cancelled, got nil")
 	}
 }
