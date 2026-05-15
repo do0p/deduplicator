@@ -777,7 +777,7 @@ function updateAcceptedActionBar() {
 
 function clearAcceptedSelection() {
   selectedAcceptedPaths.clear();
-  document.querySelectorAll('.ac-check').forEach(cb => { cb.checked = false; });
+  $('accepted-tree').querySelectorAll('.ac-check, .dir-cb').forEach(cb => { cb.checked = false; });
   updateAcceptedActionBar();
 }
 
@@ -788,7 +788,7 @@ function renderAcceptedFileRow(item, depth) {
 
   const cb = document.createElement('input');
   cb.type = 'checkbox';
-  cb.className = 'ac-check bc-check';
+  cb.className = 'ac-check';
   cb.dataset.path = item.path;
   cb.addEventListener('change', e => {
     e.stopPropagation();
@@ -846,7 +846,7 @@ function renderAccepted() {
     return;
   }
   $('accepted-empty').style.display = 'none';
-  treeEl.appendChild(renderTreeNode(buildTree(acceptedItems), 0, renderAcceptedFileRow));
+  treeEl.appendChild(renderTreeNode(buildTree(acceptedItems), 0, renderAcceptedFileRow, cascadeAccepted));
 }
 
 async function doUnaccept(paths) {
@@ -946,7 +946,7 @@ function updateBinActionBar() {
 
 function clearBinSelection() {
   selectedBinPaths.clear();
-  document.querySelectorAll('.bc-check').forEach(cb => { cb.checked = false; });
+  $('bin-tree').querySelectorAll('.bc-check, .dir-cb').forEach(cb => { cb.checked = false; });
   updateBinActionBar();
 }
 
@@ -969,7 +969,8 @@ function buildTree(items) {
 }
 
 // Render a tree node recursively. renderFileFn(item, depth) produces each file row.
-function renderTreeNode(node, depth, renderFileFn) {
+// onCascade(body, checked) is called when a dir checkbox changes.
+function renderTreeNode(node, depth, renderFileFn, onCascade) {
   const frag = document.createDocumentFragment();
   const indent = depth * 1.2;
 
@@ -985,6 +986,12 @@ function renderTreeNode(node, depth, renderFileFn) {
     exp.className = 'expander';
     exp.textContent = '▼';
 
+    const dirCb = document.createElement('input');
+    dirCb.type = 'checkbox';
+    dirCb.className = 'dir-cb';
+    dirCb.addEventListener('click', e => e.stopPropagation());
+    dirCb.addEventListener('change', () => onCascade(body, dirCb.checked));
+
     const icon = document.createElement('span');
     icon.className = 'icon';
     icon.textContent = '📁';
@@ -992,11 +999,11 @@ function renderTreeNode(node, depth, renderFileFn) {
     const label = document.createElement('span');
     label.textContent = name;
 
-    hd.append(exp, icon, label);
+    hd.append(exp, dirCb, icon, label);
 
     const body = document.createElement('div');
     body.className = 'bin-dir-body';
-    body.appendChild(renderTreeNode(child, depth + 1, renderFileFn));
+    body.appendChild(renderTreeNode(child, depth + 1, renderFileFn, onCascade));
 
     hd.addEventListener('click', () => {
       const collapsed = body.style.display === 'none';
@@ -1013,6 +1020,26 @@ function renderTreeNode(node, depth, renderFileFn) {
   }
 
   return frag;
+}
+
+function cascadeBin(body, checked) {
+  body.querySelectorAll('.bc-check').forEach(cb => {
+    cb.checked = checked;
+    if (checked) selectedBinPaths.add(cb.dataset.path);
+    else selectedBinPaths.delete(cb.dataset.path);
+  });
+  body.querySelectorAll('.dir-cb').forEach(cb => { cb.checked = checked; });
+  updateBinActionBar();
+}
+
+function cascadeAccepted(body, checked) {
+  body.querySelectorAll('.ac-check').forEach(cb => {
+    cb.checked = checked;
+    if (checked) selectedAcceptedPaths.add(cb.dataset.path);
+    else selectedAcceptedPaths.delete(cb.dataset.path);
+  });
+  body.querySelectorAll('.dir-cb').forEach(cb => { cb.checked = checked; });
+  updateAcceptedActionBar();
 }
 
 function renderBinFileRow(item, depth) {
@@ -1078,7 +1105,7 @@ function renderBin() {
     return;
   }
   $('bin-empty').style.display = 'none';
-  treeEl.appendChild(renderTreeNode(buildTree(binItems), 0, renderBinFileRow));
+  treeEl.appendChild(renderTreeNode(buildTree(binItems), 0, renderBinFileRow, cascadeBin));
 }
 
 async function doRestore(paths) {

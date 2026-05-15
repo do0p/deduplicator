@@ -474,7 +474,7 @@ header { justify-content: space-between; }
   border-radius: 4px;
 }
 .bin-file-row:hover { background: #1a1d27; }
-.bc-check { accent-color: #3b5bdb; cursor: pointer; flex-shrink: 0; }
+.bc-check, .ac-check, .dir-cb { accent-color: #3b5bdb; cursor: pointer; flex-shrink: 0; }
 .bf-name {
   flex: 1;
   font-family: monospace;
