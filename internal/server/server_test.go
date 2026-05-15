@@ -8,17 +8,23 @@ import (
 	"time"
 
 	"github.com/dominik/duplicates/internal/scanner"
+	"github.com/dominik/duplicates/internal/store"
 	"github.com/gorilla/websocket"
 )
 
-func newTestServer(mountRoot string) *Server {
-	return New(mountRoot, "dev", http.NotFoundHandler())
+func newTestServer(t *testing.T, mountRoot string) *Server {
+	t.Helper()
+	accepted, err := store.Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("store.Load: %v", err)
+	}
+	return New(mountRoot, "dev", accepted, "", http.NotFoundHandler())
 }
 
 // ---- safePath ----
 
 func TestSafePath_ValidSubdir(t *testing.T) {
-	s := newTestServer("/mnt")
+	s := newTestServer(t, "/mnt")
 	got, ok := s.safePath("/mnt/photos")
 	if !ok {
 		t.Fatal("expected ok for valid subdir")
@@ -29,7 +35,7 @@ func TestSafePath_ValidSubdir(t *testing.T) {
 }
 
 func TestSafePath_ExactRoot(t *testing.T) {
-	s := newTestServer("/mnt")
+	s := newTestServer(t, "/mnt")
 	_, ok := s.safePath("/mnt")
 	if !ok {
 		t.Fatal("expected ok for exact mount root")
@@ -37,7 +43,7 @@ func TestSafePath_ExactRoot(t *testing.T) {
 }
 
 func TestSafePath_TraversalDotDot(t *testing.T) {
-	s := newTestServer("/mnt")
+	s := newTestServer(t, "/mnt")
 	_, ok := s.safePath("../../etc/passwd")
 	if ok {
 		t.Fatal("expected rejection for path traversal with ..")
@@ -45,7 +51,7 @@ func TestSafePath_TraversalDotDot(t *testing.T) {
 }
 
 func TestSafePath_TraversalAbsolute(t *testing.T) {
-	s := newTestServer("/mnt")
+	s := newTestServer(t, "/mnt")
 	_, ok := s.safePath("/etc/passwd")
 	if ok {
 		t.Fatal("expected rejection for absolute path outside mount root")
@@ -53,7 +59,7 @@ func TestSafePath_TraversalAbsolute(t *testing.T) {
 }
 
 func TestSafePath_TraversalMidPath(t *testing.T) {
-	s := newTestServer("/mnt")
+	s := newTestServer(t, "/mnt")
 	_, ok := s.safePath("/mnt/../etc/passwd")
 	if ok {
 		t.Fatal("expected rejection for /mnt/../etc/passwd")
@@ -62,7 +68,7 @@ func TestSafePath_TraversalMidPath(t *testing.T) {
 
 func TestSafePath_PrefixCollision(t *testing.T) {
 	// /mntother must not be accepted when mountRoot is /mnt.
-	s := newTestServer("/mnt")
+	s := newTestServer(t, "/mnt")
 	_, ok := s.safePath("/mntother/secret")
 	if ok {
 		t.Fatal("expected rejection for sibling dir /mntother — prefix collision bug")
@@ -70,7 +76,7 @@ func TestSafePath_PrefixCollision(t *testing.T) {
 }
 
 func TestSafePath_DeepNested(t *testing.T) {
-	s := newTestServer("/mnt")
+	s := newTestServer(t, "/mnt")
 	_, ok := s.safePath("/mnt/a/b/c/d/image.jpg")
 	if !ok {
 		t.Fatal("expected ok for deeply nested path")
@@ -80,7 +86,7 @@ func TestSafePath_DeepNested(t *testing.T) {
 // ---- HTTP handler security ----
 
 func TestHandleImage_PathTraversal(t *testing.T) {
-	s := newTestServer("/mnt")
+	s := newTestServer(t, "/mnt")
 	mux := http.NewServeMux()
 	s.RegisterRoutes(mux)
 
@@ -94,7 +100,7 @@ func TestHandleImage_PathTraversal(t *testing.T) {
 }
 
 func TestHandleImage_PrefixCollision(t *testing.T) {
-	s := newTestServer("/mnt")
+	s := newTestServer(t, "/mnt")
 	mux := http.NewServeMux()
 	s.RegisterRoutes(mux)
 
@@ -108,7 +114,7 @@ func TestHandleImage_PrefixCollision(t *testing.T) {
 }
 
 func TestHandleBrowse_PathTraversal(t *testing.T) {
-	s := newTestServer("/mnt")
+	s := newTestServer(t, "/mnt")
 	mux := http.NewServeMux()
 	s.RegisterRoutes(mux)
 
@@ -122,7 +128,7 @@ func TestHandleBrowse_PathTraversal(t *testing.T) {
 }
 
 func TestHandleScan_InvalidRegex(t *testing.T) {
-	s := newTestServer("/tmp")
+	s := newTestServer(t, "/tmp")
 	mux := http.NewServeMux()
 	s.RegisterRoutes(mux)
 
@@ -138,7 +144,7 @@ func TestHandleScan_InvalidRegex(t *testing.T) {
 }
 
 func TestHandleScan_ForbiddenDir(t *testing.T) {
-	s := newTestServer("/mnt")
+	s := newTestServer(t, "/mnt")
 	mux := http.NewServeMux()
 	s.RegisterRoutes(mux)
 
@@ -154,7 +160,7 @@ func TestHandleScan_ForbiddenDir(t *testing.T) {
 }
 
 func TestHandleScan_EmptyDirs(t *testing.T) {
-	s := newTestServer("/tmp")
+	s := newTestServer(t, "/tmp")
 	mux := http.NewServeMux()
 	s.RegisterRoutes(mux)
 
@@ -256,7 +262,7 @@ func wsURL(srv *httptest.Server, path string) string {
 }
 
 func TestWS_ReceivesInitialState(t *testing.T) {
-	s := newTestServer("/mnt")
+	s := newTestServer(t, "/mnt")
 
 	// Seed a known scan state.
 	s.state.mu.Lock()
@@ -293,7 +299,7 @@ func TestWS_ReceivesInitialState(t *testing.T) {
 }
 
 func TestWS_SubscriberCleanedUpOnDisconnect(t *testing.T) {
-	s := newTestServer("/mnt")
+	s := newTestServer(t, "/mnt")
 	mux := http.NewServeMux()
 	s.RegisterRoutes(mux)
 	srv := httptest.NewServer(mux)

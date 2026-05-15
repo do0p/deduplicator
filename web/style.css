@@ -197,6 +197,58 @@ tbody td { padding: 0.55rem 0.75rem; vertical-align: middle; }
   gap: 1rem;
   padding: 1rem 1.5rem;
 }
+/* ---- action bar ---- */
+.action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: #1a1d27;
+  border: 1px solid #3b5bdb44;
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.88rem;
+  color: #94a3b8;
+}
+.action-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.action-bar select {
+  background: #23263a;
+  border: 1px solid #2d3148;
+  border-radius: 6px;
+  color: #e2e8f0;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+.action-bar select:focus { outline: none; border-color: #3b5bdb; }
+
+/* ---- group select-all ---- */
+.group-sel-all {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0.1rem 0 0.5rem;
+  width: 100%;
+}
+.group-sel-all input { accent-color: #3b5bdb; cursor: pointer; }
+
+/* ---- file-card checkbox ---- */
+.fc-check {
+  accent-color: #3b5bdb;
+  cursor: pointer;
+  width: 1rem;
+  height: 1rem;
+  margin-bottom: 0.2rem;
+}
+
 .file-card {
   display: flex;
   flex-direction: column;
@@ -349,6 +401,33 @@ tbody td { padding: 0.55rem 0.75rem; vertical-align: middle; }
 .modal-close:hover { background: #2d3148; color: #fff; }
 
 .no-results { text-align: center; color: #64748b; padding: 3rem 0; }
+
+/* ---- confirmation modal ---- */
+.confirm-box {
+  background: #1a1d27;
+  border: 1px solid #2d3148;
+  border-radius: 12px;
+  padding: 1.5rem 1.75rem;
+  max-width: 480px;
+  width: 100%;
+}
+.confirm-box h3 { font-size: 1rem; margin-bottom: 0.5rem; }
+.confirm-box p  { font-size: 0.88rem; color: #94a3b8; margin-bottom: 0.75rem; }
+.confirm-list {
+  list-style: disc;
+  padding-left: 1.25rem;
+  margin-bottom: 1.25rem;
+  font-size: 0.82rem;
+  font-family: monospace;
+  color: #e2e8f0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.confirm-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
 
 /* ---- footer ---- */
 footer {

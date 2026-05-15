@@ -6,6 +6,8 @@ let allGroups = [];
 let sortCol = 'size';
 let sortAsc = false;
 let expandedRow = null;
+let selectedPaths = new Set();
+let recycleBinEnabled = false;
 
 // ---- Utilities ----
 const $ = id => document.getElementById(id);
@@ -284,6 +286,128 @@ function startProgress() {
   };
 }
 
+// ---- Selection & Actions ----
+
+function updateActionBar() {
+  const bar = $('action-bar');
+  const n = selectedPaths.size;
+  if (n > 0) {
+    bar.style.display = 'flex';
+    $('sel-count').textContent = n + ' image' + (n === 1 ? '' : 's') + ' selected';
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function onFileCheckChange(e) {
+  const path = e.target.dataset.path;
+  if (e.target.checked) selectedPaths.add(path);
+  else selectedPaths.delete(path);
+  updateActionBar();
+}
+
+function clearSelection() {
+  selectedPaths.clear();
+  document.querySelectorAll('.fc-check').forEach(cb => { cb.checked = false; });
+  document.querySelectorAll('.group-sel-all input').forEach(cb => { cb.checked = false; });
+  updateActionBar();
+}
+
+function removePathsFromResults(paths) {
+  const removed = new Set(paths);
+  allGroups = allGroups
+    .map(g => ({ ...g, files: g.files.filter(f => !removed.has(f.path)) }))
+    .filter(g => g.files.length >= 2);
+  renderResults();
+}
+
+// Returns a Promise<boolean> — true if user confirmed, false if cancelled.
+function showConfirm(title, desc, filenames) {
+  return new Promise(resolve => {
+    $('confirm-title').textContent = title;
+    $('confirm-desc').textContent = desc;
+    const list = $('confirm-list');
+    list.innerHTML = '';
+    filenames.forEach(name => {
+      const li = document.createElement('li');
+      li.textContent = name;
+      list.appendChild(li);
+    });
+    $('confirm-modal').classList.add('open');
+
+    function finish(result) {
+      $('confirm-modal').classList.remove('open');
+      $('confirm-ok').removeEventListener('click', onOk);
+      $('confirm-cancel').removeEventListener('click', onCancel);
+      resolve(result);
+    }
+    function onOk() { finish(true); }
+    function onCancel() { finish(false); }
+    $('confirm-ok').addEventListener('click', onOk);
+    $('confirm-cancel').addEventListener('click', onCancel);
+  });
+}
+
+$('confirm-cancel').addEventListener('click', () => {}); // prevent bubbling setup duplication
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && $('confirm-modal').classList.contains('open')) {
+    $('confirm-modal').classList.remove('open');
+  }
+});
+$('confirm-modal').addEventListener('click', e => {
+  if (e.target === $('confirm-modal')) $('confirm-modal').classList.remove('open');
+});
+
+$('btn-clear-sel').addEventListener('click', clearSelection);
+
+$('btn-apply').addEventListener('click', async () => {
+  const action = $('action-select').value;
+  if (!action || selectedPaths.size === 0) return;
+
+  const paths = [...selectedPaths];
+  const names = paths.map(p => basename(p));
+
+  let title, desc;
+  if (action === 'accept') {
+    title = 'Accept ' + paths.length + ' image' + (paths.length === 1 ? '' : 's') + '?';
+    desc = 'These images will be hidden from all future scan results.';
+  } else {
+    title = 'Move ' + paths.length + ' image' + (paths.length === 1 ? '' : 's') + ' to Recycle Bin?';
+    desc = 'These files will be physically moved to the recycle bin directory.';
+  }
+
+  const confirmed = await showConfirm(title, desc, names);
+  if (!confirmed) return;
+
+  const endpoint = action === 'accept' ? '/api/accept' : '/api/trash';
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paths }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      alert('Action failed: ' + text);
+      return;
+    }
+    if (action === 'trash') {
+      const data = await res.json();
+      if (data.failed && data.failed.length > 0) {
+        const msgs = data.failed.map(f => basename(f.path) + ': ' + f.error).join('\n');
+        alert('Some files could not be moved:\n' + msgs);
+      }
+      removePathsFromResults(data.moved || []);
+    } else {
+      removePathsFromResults(paths);
+    }
+    clearSelection();
+    $('action-select').value = '';
+  } catch (err) {
+    alert('Request failed: ' + err.message);
+  }
+});
+
 // ---- View 3: Results ----
 async function loadResults() {
   try {
@@ -387,9 +511,35 @@ function toggleDetail(tr, g) {
   const inner = document.createElement('div');
   inner.className = 'detail-inner';
 
+  // Group-level select-all row
+  const selAllLabel = document.createElement('label');
+  selAllLabel.className = 'group-sel-all';
+  const selAllCb = document.createElement('input');
+  selAllCb.type = 'checkbox';
+  selAllCb.addEventListener('change', () => {
+    inner.querySelectorAll('.fc-check').forEach(cb => {
+      cb.checked = selAllCb.checked;
+      if (selAllCb.checked) selectedPaths.add(cb.dataset.path);
+      else selectedPaths.delete(cb.dataset.path);
+    });
+    updateActionBar();
+  });
+  selAllLabel.append(selAllCb, ' Select all in group');
+  inner.appendChild(selAllLabel);
+
   g.files.forEach(f => {
     const card = document.createElement('div');
     card.className = 'file-card';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'fc-check';
+    cb.dataset.path = f.path;
+    cb.checked = selectedPaths.has(f.path);
+    cb.addEventListener('change', e => {
+      e.stopPropagation();
+      onFileCheckChange(e);
+    });
 
     const img = document.createElement('img');
     img.src = '/api/image?path=' + encodeURIComponent(f.path);
@@ -418,7 +568,7 @@ function toggleDetail(tr, g) {
     modEl.className = 'fc-mod';
     modEl.textContent = fmtDate(f.modTime);
 
-    card.append(img, nameEl, folderEl, sizeEl, modEl);
+    card.append(cb, img, nameEl, folderEl, sizeEl, modEl);
     inner.appendChild(card);
   });
 
@@ -563,6 +713,7 @@ async function goToSetup() {
     ws = null;
   }
   selectedDirs.clear();
+  clearSelection();
   $('btn-scan').disabled = true;
   showView('setup');
   await loadTree('', $('folder-tree'));
@@ -587,6 +738,16 @@ function escHtml(s) {
     if (res.ok) {
       const { version } = await res.json();
       $('version-badge').textContent = 'v' + version;
+    }
+  } catch (_) {}
+
+  // Load app config.
+  try {
+    const res = await fetch('/api/config');
+    if (res.ok) {
+      const cfg = await res.json();
+      recycleBinEnabled = cfg.recycleBinEnabled;
+      if (recycleBinEnabled) $('opt-trash').style.display = '';
     }
   } catch (_) {}
 

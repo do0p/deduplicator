@@ -3,7 +3,9 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"image"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -21,6 +23,7 @@ import (
 
 	"github.com/dominik/duplicates/internal/matcher"
 	"github.com/dominik/duplicates/internal/scanner"
+	"github.com/dominik/duplicates/internal/store"
 	"github.com/gorilla/websocket"
 	"github.com/rwcarlsen/goexif/exif"
 	"github.com/rwcarlsen/goexif/tiff"
@@ -32,6 +35,8 @@ import (
 type Server struct {
 	mountRoot  string
 	version    string
+	accepted   *store.AcceptedStore
+	recycleBin string
 	state      scanState
 	subs       subscribers
 	fs         http.Handler
@@ -99,8 +104,14 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-func New(mountRoot, version string, webFS http.Handler) *Server {
-	return &Server{mountRoot: mountRoot, version: version, fs: webFS}
+func New(mountRoot, version string, accepted *store.AcceptedStore, recycleBin string, webFS http.Handler) *Server {
+	return &Server{
+		mountRoot:  mountRoot,
+		version:    version,
+		accepted:   accepted,
+		recycleBin: recycleBin,
+		fs:         webFS,
+	}
 }
 
 func (s *Server) RegisterRoutes(mux *http.ServeMux) {
@@ -112,12 +123,131 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/image", s.handleImage)
 	mux.HandleFunc("GET /api/fileinfo", s.handleFileInfo)
 	mux.HandleFunc("GET /api/version", s.handleVersion)
+	mux.HandleFunc("GET /api/config", s.handleConfig)
+	mux.HandleFunc("POST /api/accept", s.handleAccept)
+	mux.HandleFunc("POST /api/trash", s.handleTrash)
 	mux.HandleFunc("GET /ws", s.handleWS)
 	mux.Handle("/", s.fs)
 }
 
 func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"version": s.version})
+}
+
+func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, map[string]bool{"recycleBinEnabled": s.recycleBin != ""})
+}
+
+func (s *Server) handleAccept(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Paths []string `json:"paths"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var safe []string
+	for _, p := range req.Paths {
+		sp, ok := s.safePath(p)
+		if !ok {
+			http.Error(w, "forbidden path: "+p, http.StatusForbidden)
+			return
+		}
+		safe = append(safe, sp)
+	}
+	if err := s.accepted.Add(safe); err != nil {
+		http.Error(w, "failed to save: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) handleTrash(w http.ResponseWriter, r *http.Request) {
+	if s.recycleBin == "" {
+		http.Error(w, "recycle bin not configured", http.StatusForbidden)
+		return
+	}
+	var req struct {
+		Paths []string `json:"paths"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	type failEntry struct {
+		Path  string `json:"path"`
+		Error string `json:"error"`
+	}
+	var moved []string
+	var failed []failEntry
+
+	for _, p := range req.Paths {
+		sp, ok := s.safePath(p)
+		if !ok {
+			failed = append(failed, failEntry{Path: p, Error: "forbidden"})
+			continue
+		}
+		dst, err := trashDest(s.recycleBin, sp)
+		if err != nil {
+			failed = append(failed, failEntry{Path: p, Error: err.Error()})
+			continue
+		}
+		if err := moveFile(sp, dst); err != nil {
+			failed = append(failed, failEntry{Path: p, Error: err.Error()})
+			continue
+		}
+		moved = append(moved, sp)
+	}
+
+	writeJSON(w, map[string]any{"moved": moved, "failed": failed})
+}
+
+// trashDest returns a non-colliding destination path inside recycleBin for src.
+func trashDest(recycleBin, src string) (string, error) {
+	if err := os.MkdirAll(recycleBin, 0755); err != nil {
+		return "", err
+	}
+	base := filepath.Base(src)
+	dst := filepath.Join(recycleBin, base)
+	if _, err := os.Lstat(dst); os.IsNotExist(err) {
+		return dst, nil
+	}
+	ext := filepath.Ext(base)
+	name := strings.TrimSuffix(base, ext)
+	for i := 1; i < 1000; i++ {
+		candidate := filepath.Join(recycleBin, fmt.Sprintf("%s_%d%s", name, i, ext))
+		if _, err := os.Lstat(candidate); os.IsNotExist(err) {
+			return candidate, nil
+		}
+	}
+	return "", os.ErrExist
+}
+
+// moveFile moves src to dst, falling back to copy+delete for cross-device moves.
+func moveFile(src, dst string) error {
+	if err := os.Rename(src, dst); err == nil {
+		return nil
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0644)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		os.Remove(dst)
+		return err
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(dst)
+		return err
+	}
+	return os.Remove(src)
 }
 
 // safePath validates that the requested path is within mountRoot.
@@ -337,7 +467,20 @@ func (s *Server) handleResults(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "scan not complete", http.StatusConflict)
 		return
 	}
-	writeJSON(w, s.state.results)
+	// Filter out accepted files; drop groups that shrink below 2.
+	filtered := make([]matcher.DuplicateGroup, 0, len(s.state.results))
+	for _, g := range s.state.results {
+		var kept []scanner.FileRecord
+		for _, f := range g.Files {
+			if !s.accepted.IsAccepted(f.Path) {
+				kept = append(kept, f)
+			}
+		}
+		if len(kept) >= 2 {
+			filtered = append(filtered, matcher.DuplicateGroup{Files: kept})
+		}
+	}
+	writeJSON(w, filtered)
 }
 
 func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {

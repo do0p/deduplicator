@@ -58,6 +58,19 @@
     <button class="btn btn-secondary" id="btn-new-scan">New scan</button>
   </div>
 
+  <div id="action-bar" class="action-bar" style="display:none">
+    <span id="sel-count"></span>
+    <div class="action-bar-right">
+      <select id="action-select">
+        <option value="">Select action…</option>
+        <option value="accept">Accept</option>
+        <option value="trash" id="opt-trash" style="display:none">Move to Recycle Bin</option>
+      </select>
+      <button class="btn btn-primary" id="btn-apply">Apply</button>
+      <button class="btn btn-secondary" id="btn-clear-sel">Clear selection</button>
+    </div>
+  </div>
+
   <div class="filter-row">
     <input type="search" id="filter-input" placeholder="Filter by filename…">
   </div>
@@ -75,7 +88,20 @@
   <div id="no-results" class="no-results" style="display:none">No duplicate groups found.</div>
 </div>
 
-<!-- Modal -->
+<!-- Confirmation modal -->
+<div class="modal-backdrop" id="confirm-modal">
+  <div class="confirm-box">
+    <h3 id="confirm-title"></h3>
+    <p id="confirm-desc"></p>
+    <ul id="confirm-list" class="confirm-list"></ul>
+    <div class="confirm-buttons">
+      <button class="btn btn-secondary" id="confirm-cancel">Cancel</button>
+      <button class="btn btn-primary" id="confirm-ok">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Image modal -->
 <div class="modal-backdrop" id="modal">
   <div class="modal-content">
     <button class="modal-close" id="modal-close">&times;</button>

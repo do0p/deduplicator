@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/dominik/duplicates/internal/server"
+	"github.com/dominik/duplicates/internal/store"
 )
 
 //go:embed web
@@ -25,6 +26,16 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
+	dataDir := os.Getenv("DATA_DIR")
+	if dataDir == "" {
+		dataDir = "/data"
+	}
+	recycleBin := os.Getenv("RECYCLE_BIN")
+
+	accepted, err := store.Load(dataDir)
+	if err != nil {
+		log.Fatalf("failed to load accepted store: %v", err)
+	}
 
 	subFS, err := fs.Sub(webFiles, "web")
 	if err != nil {
@@ -32,7 +43,7 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	srv := server.New(mountRoot, version, http.FileServer(http.FS(subFS)))
+	srv := server.New(mountRoot, version, accepted, recycleBin, http.FileServer(http.FS(subFS)))
 	srv.RegisterRoutes(mux)
 
 	log.Printf("listening on :%s  mount=%s", port, mountRoot)

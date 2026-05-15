@@ -2,10 +2,13 @@ services:
   duplicates:
     build: .
     ports:
-      - "8080:8080"
+      - "9001:8080"
     volumes:
-      - /path/to/your/photos:/mnt:ro
+      - /volume1/photo:/mnt:rw
+      - /volume1/docker/duplicates:/data
     environment:
       MOUNT_ROOT: /mnt
       PORT: "8080"
+      DATA_DIR: /data
+      RECYCLE_BIN: /mnt/#recycle   # = /volume1/photo/#recycle on host
     restart: unless-stopped
