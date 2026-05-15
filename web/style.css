@@ -429,9 +429,14 @@ tbody td { padding: 0.55rem 0.75rem; vertical-align: middle; }
   gap: 0.6rem;
 }
 
-/* ---- header bin button ---- */
+/* ---- header nav ---- */
 header { justify-content: space-between; }
+.header-nav { display: flex; gap: 0.5rem; }
 .btn-bin { font-size: 0.85rem; padding: 0.4rem 1rem; }
+
+/* ---- missing file indicator (accepted view) ---- */
+.af-missing .bf-name { color: #475569; cursor: default; text-decoration: line-through; }
+.af-missing .bf-size { color: #3b4155; }
 
 /* ---- bin tree ---- */
 .bin-tree { font-size: 0.88rem; }

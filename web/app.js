@@ -10,6 +10,8 @@ let selectedPaths = new Set();
 let recycleBinEnabled = false;
 let binItems = [];
 let selectedBinPaths = new Set();
+let acceptedItems = [];
+let selectedAcceptedPaths = new Set();
 let previousView = 'setup';
 
 // ---- Utilities ----
@@ -738,6 +740,169 @@ $('btn-abort').addEventListener('click', async () => {
   goToSetup();
 });
 
+// ---- Accepted View ----
+
+const acceptedPreview = document.createElement('div');
+acceptedPreview.className = 'bin-preview';
+const acceptedPreviewImg = document.createElement('img');
+acceptedPreview.appendChild(acceptedPreviewImg);
+document.body.appendChild(acceptedPreview);
+
+document.addEventListener('mousemove', e => {
+  if (!acceptedPreview.classList.contains('visible')) return;
+  let x = e.clientX + 16;
+  let y = e.clientY - 16;
+  if (x + 296 > window.innerWidth)  x = e.clientX - 312;
+  if (y + 296 > window.innerHeight) y = window.innerHeight - 300;
+  if (y < 8) y = 8;
+  acceptedPreview.style.left = x + 'px';
+  acceptedPreview.style.top  = y + 'px';
+});
+
+function updateAcceptedActionBar() {
+  const n = selectedAcceptedPaths.size;
+  $('accepted-sel-count').textContent = n > 0
+    ? n + ' item' + (n === 1 ? '' : 's') + ' selected'
+    : 'No items selected';
+  $('btn-unaccept').disabled = n === 0;
+}
+
+function clearAcceptedSelection() {
+  selectedAcceptedPaths.clear();
+  document.querySelectorAll('.ac-check').forEach(cb => { cb.checked = false; });
+  updateAcceptedActionBar();
+}
+
+function renderAcceptedFileRow(item, depth) {
+  const row = document.createElement('div');
+  row.className = 'bin-file-row' + (item.missing ? ' af-missing' : '');
+  row.style.paddingLeft = (depth * 1.2 + 0.4) + 'rem';
+
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.className = 'ac-check bc-check';
+  cb.dataset.path = item.path;
+  cb.addEventListener('change', e => {
+    e.stopPropagation();
+    if (e.target.checked) selectedAcceptedPaths.add(item.path);
+    else selectedAcceptedPaths.delete(item.path);
+    updateAcceptedActionBar();
+  });
+
+  const nameEl = document.createElement('span');
+  nameEl.className = 'bf-name';
+  nameEl.textContent = item.name;
+  nameEl.title = item.path;
+  if (!item.missing) nameEl.addEventListener('click', () => openModal(item.path));
+
+  const sizeEl = document.createElement('span');
+  sizeEl.className = 'bf-size';
+  sizeEl.textContent = item.missing ? 'missing' : fmt(item.size);
+
+  const dateEl = document.createElement('span');
+  dateEl.className = 'bf-date';
+  dateEl.textContent = item.missing ? '' : fmtDate(item.modTime);
+
+  const revertBtn = document.createElement('button');
+  revertBtn.className = 'bf-restore';
+  revertBtn.textContent = 'Revert';
+  revertBtn.addEventListener('click', async e => {
+    e.stopPropagation();
+    await doUnaccept([item.path]);
+  });
+
+  row.append(cb, nameEl, sizeEl, dateEl, revertBtn);
+
+  if (!item.missing) {
+    row.addEventListener('mouseenter', () => {
+      acceptedPreviewImg.src = '/api/image?path=' + encodeURIComponent(item.path);
+      acceptedPreview.classList.add('visible');
+    });
+    row.addEventListener('mouseleave', () => {
+      acceptedPreview.classList.remove('visible');
+      acceptedPreviewImg.src = '';
+    });
+  }
+
+  return row;
+}
+
+function renderAccepted() {
+  const treeEl = $('accepted-tree');
+  treeEl.innerHTML = '';
+  $('accepted-loading').style.display = 'none';
+  $('accepted-stats').textContent = acceptedItems.length + ' item' + (acceptedItems.length === 1 ? '' : 's');
+
+  if (acceptedItems.length === 0) {
+    $('accepted-empty').style.display = 'block';
+    return;
+  }
+  $('accepted-empty').style.display = 'none';
+  treeEl.appendChild(renderTreeNode(buildTree(acceptedItems), 0, renderAcceptedFileRow));
+}
+
+async function doUnaccept(paths) {
+  const names = paths.map(p => basename(p));
+  const confirmed = await showConfirm(
+    'Revert ' + paths.length + ' item' + (paths.length === 1 ? '' : 's') + '?',
+    'These files will appear in scan results again.',
+    names
+  );
+  if (!confirmed) return;
+
+  try {
+    const res = await fetch('/api/unaccept', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paths }),
+    });
+    if (!res.ok) {
+      alert('Revert failed: ' + await res.text());
+      return;
+    }
+    const reverted = new Set(paths);
+    acceptedItems = acceptedItems.filter(item => !reverted.has(item.path));
+    selectedAcceptedPaths = new Set([...selectedAcceptedPaths].filter(p => !reverted.has(p)));
+    renderAccepted();
+    updateAcceptedActionBar();
+  } catch (err) {
+    alert('Request failed: ' + err.message);
+  }
+}
+
+async function openAcceptedView() {
+  const active = document.querySelector('.view.active');
+  previousView = active ? active.id.replace('view-', '') : 'setup';
+
+  showView('accepted');
+  $('accepted-loading').style.display = 'block';
+  $('accepted-empty').style.display = 'none';
+  $('accepted-tree').innerHTML = '';
+  clearAcceptedSelection();
+
+  try {
+    const res = await fetch('/api/accepted');
+    acceptedItems = res.ok ? (await res.json() || []) : [];
+  } catch (_) {
+    acceptedItems = [];
+  }
+  renderAccepted();
+}
+
+$('btn-open-accepted').addEventListener('click', openAcceptedView);
+
+$('btn-back-from-accepted').addEventListener('click', () => {
+  acceptedPreview.classList.remove('visible');
+  showView(previousView);
+});
+
+$('btn-accepted-clear-sel').addEventListener('click', clearAcceptedSelection);
+
+$('btn-unaccept').addEventListener('click', async () => {
+  if (selectedAcceptedPaths.size === 0) return;
+  await doUnaccept([...selectedAcceptedPaths]);
+});
+
 // ---- Helpers ----
 function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -778,7 +943,7 @@ function clearBinSelection() {
 }
 
 // Build a nested tree from flat items using their relPath.
-function buildBinTree(items) {
+function buildTree(items) {
   const root = { children: {}, files: [] };
   for (const item of items) {
     const parts = item.relPath.split('/');
@@ -795,7 +960,8 @@ function buildBinTree(items) {
   return root;
 }
 
-function renderBinNode(node, depth) {
+// Render a tree node recursively. renderFileFn(item, depth) produces each file row.
+function renderTreeNode(node, depth, renderFileFn) {
   const frag = document.createDocumentFragment();
   const indent = depth * 1.2;
 
@@ -822,7 +988,7 @@ function renderBinNode(node, depth) {
 
     const body = document.createElement('div');
     body.className = 'bin-dir-body';
-    body.appendChild(renderBinNode(child, depth + 1));
+    body.appendChild(renderTreeNode(child, depth + 1, renderFileFn));
 
     hd.addEventListener('click', () => {
       const collapsed = body.style.display === 'none';
@@ -835,7 +1001,7 @@ function renderBinNode(node, depth) {
   }
 
   for (const item of node.files) {
-    frag.appendChild(renderBinFileRow(item, depth));
+    frag.appendChild(renderFileFn(item, depth));
   }
 
   return frag;
@@ -904,7 +1070,7 @@ function renderBin() {
     return;
   }
   $('bin-empty').style.display = 'none';
-  treeEl.appendChild(renderBinNode(buildBinTree(binItems), 0));
+  treeEl.appendChild(renderTreeNode(buildTree(binItems), 0, renderBinFileRow));
 }
 
 async function doRestore(paths) {

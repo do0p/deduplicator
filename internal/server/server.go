@@ -127,6 +127,8 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/config", s.handleConfig)
 	mux.HandleFunc("POST /api/accept", s.handleAccept)
 	mux.HandleFunc("POST /api/trash", s.handleTrash)
+	mux.HandleFunc("GET /api/accepted", s.handleAccepted)
+	mux.HandleFunc("POST /api/unaccept", s.handleUnaccept)
 	mux.HandleFunc("GET /api/bin", s.handleBin)
 	mux.HandleFunc("POST /api/restore", s.handleRestore)
 	mux.HandleFunc("GET /ws", s.handleWS)
@@ -255,6 +257,59 @@ func moveFile(src, dst string) error {
 		return err
 	}
 	return os.Remove(src)
+}
+
+func (s *Server) handleAccepted(w http.ResponseWriter, r *http.Request) {
+	paths := s.accepted.List()
+	type acceptedItem struct {
+		Path    string    `json:"path"`
+		RelPath string    `json:"relPath"`
+		Name    string    `json:"name"`
+		Size    int64     `json:"size,omitempty"`
+		ModTime time.Time `json:"modTime,omitempty"`
+		Missing bool      `json:"missing,omitempty"`
+	}
+	items := make([]acceptedItem, 0, len(paths))
+	for _, p := range paths {
+		rel, _ := filepath.Rel(s.mountRoot, p)
+		item := acceptedItem{
+			Path:    p,
+			RelPath: filepath.ToSlash(rel),
+			Name:    filepath.Base(p),
+		}
+		if info, err := os.Stat(p); err == nil {
+			item.Size = info.Size()
+			item.ModTime = info.ModTime()
+		} else {
+			item.Missing = true
+		}
+		items = append(items, item)
+	}
+	writeJSON(w, items)
+}
+
+func (s *Server) handleUnaccept(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Paths []string `json:"paths"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var safe []string
+	for _, p := range req.Paths {
+		sp, ok := s.safePath(p)
+		if !ok {
+			http.Error(w, "forbidden path: "+p, http.StatusForbidden)
+			return
+		}
+		safe = append(safe, sp)
+	}
+	if err := s.accepted.Remove(safe); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 // safeBinPath validates that the requested path is within recycleBin.

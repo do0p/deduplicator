@@ -10,7 +10,10 @@
 
 <header>
   <h1>Find Duplicate Images</h1>
-  <button class="btn btn-secondary btn-bin" id="btn-open-bin" style="display:none">🗑 Recycle Bin</button>
+  <div class="header-nav">
+    <button class="btn btn-secondary btn-bin" id="btn-open-accepted">✓ Accepted</button>
+    <button class="btn btn-secondary btn-bin" id="btn-open-bin" style="display:none">🗑 Recycle Bin</button>
+  </div>
 </header>
 
 <!-- VIEW 1: Setup -->
@@ -89,7 +92,30 @@
   <div id="no-results" class="no-results" style="display:none">No duplicate groups found.</div>
 </div>
 
-<!-- VIEW 4: Recycle Bin -->
+<!-- VIEW 4: Accepted -->
+<div id="view-accepted" class="view">
+  <div class="results-header">
+    <div>
+      <h2>Accepted duplicates</h2>
+      <div class="stats" id="accepted-stats"></div>
+    </div>
+    <button class="btn btn-secondary" id="btn-back-from-accepted">← Back</button>
+  </div>
+
+  <div id="accepted-action-bar" class="action-bar">
+    <span id="accepted-sel-count">No items selected</span>
+    <div class="action-bar-right">
+      <button class="btn btn-primary" id="btn-unaccept" disabled>Revert selected</button>
+      <button class="btn btn-secondary" id="btn-accepted-clear-sel">Clear selection</button>
+    </div>
+  </div>
+
+  <div id="accepted-tree" class="bin-tree"></div>
+  <div id="accepted-empty" class="no-results" style="display:none">No accepted files.</div>
+  <div id="accepted-loading" class="no-results">Loading…</div>
+</div>
+
+<!-- VIEW 5: Recycle Bin -->
 <div id="view-bin" class="view">
   <div class="results-header">
     <div>

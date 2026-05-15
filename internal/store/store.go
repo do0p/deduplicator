@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 )
 
@@ -56,6 +57,28 @@ func (s *AcceptedStore) Add(paths []string) error {
 	defer s.mu.Unlock()
 	for _, p := range paths {
 		s.set[p] = struct{}{}
+	}
+	return s.save()
+}
+
+// List returns all accepted paths in sorted order.
+func (s *AcceptedStore) List() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	paths := make([]string, 0, len(s.set))
+	for p := range s.set {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	return paths
+}
+
+// Remove deletes paths from the store and persists atomically.
+func (s *AcceptedStore) Remove(paths []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, p := range paths {
+		delete(s.set, p)
 	}
 	return s.save()
 }
