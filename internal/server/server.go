@@ -283,6 +283,7 @@ func (s *Server) handleBin(w http.ResponseWriter, r *http.Request) {
 	}
 	type binItem struct {
 		Path         string    `json:"path"`
+		RelPath      string    `json:"relPath"`
 		Name         string    `json:"name"`
 		Size         int64     `json:"size"`
 		ModTime      time.Time `json:"modTime"`
@@ -301,6 +302,7 @@ func (s *Server) handleBin(w http.ResponseWriter, r *http.Request) {
 		origPath := filepath.Join(s.mountRoot, rel)
 		items = append(items, binItem{
 			Path:         path,
+			RelPath:      filepath.ToSlash(rel),
 			Name:         filepath.Base(path),
 			Size:         info.Size(),
 			ModTime:      info.ModTime(),

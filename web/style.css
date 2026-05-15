@@ -433,68 +433,78 @@ tbody td { padding: 0.55rem 0.75rem; vertical-align: middle; }
 header { justify-content: space-between; }
 .btn-bin { font-size: 0.85rem; padding: 0.4rem 1rem; }
 
-/* ---- bin view ---- */
-.bin-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  padding-bottom: 1rem;
-}
+/* ---- bin tree ---- */
+.bin-tree { font-size: 0.88rem; }
 
-.bin-card {
-  background: #1a1d27;
-  border: 1px solid #2d3148;
-  border-radius: 8px;
-  padding: 0.75rem;
+.bin-dir-hd {
   display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  width: 200px;
-}
-.bin-card img {
-  width: 100%;
-  height: 130px;
-  object-fit: cover;
-  border-radius: 5px;
-  border: 2px solid #2d3148;
-  cursor: zoom-in;
-  transition: border-color 0.15s;
-}
-.bin-card img:hover { border-color: #3b5bdb; }
-.bin-card .bc-check {
-  accent-color: #3b5bdb;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 3px 6px;
+  border-radius: 4px;
   cursor: pointer;
-  width: 1rem;
-  height: 1rem;
-  margin-bottom: 0.15rem;
-}
-.bin-card .bc-name {
-  font-size: 0.78rem;
-  font-family: monospace;
-  color: #e2e8f0;
-  word-break: break-all;
-}
-.bin-card .bc-orig {
-  font-size: 0.65rem;
-  font-family: monospace;
-  color: #64748b;
-  word-break: break-all;
-}
-.bin-card .bc-size { font-size: 0.72rem; color: #94a3b8; }
-.bin-card .bc-mod  { font-size: 0.68rem; color: #475569; }
-.bin-card .btn-restore-single {
-  margin-top: 0.4rem;
-  padding: 0.35rem 0.75rem;
-  font-size: 0.78rem;
+  user-select: none;
   font-weight: 600;
-  border-radius: 6px;
+  color: #c8d0e0;
+}
+.bin-dir-hd:hover { background: #1a1d27; }
+.bin-dir-hd .expander { color: #64748b; font-size: 0.75rem; width: 1rem; text-align: center; }
+.bin-dir-hd .icon { color: #fbbf24; font-size: 0.85rem; }
+
+.bin-file-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+.bin-file-row:hover { background: #1a1d27; }
+.bc-check { accent-color: #3b5bdb; cursor: pointer; flex-shrink: 0; }
+.bf-name {
+  flex: 1;
+  font-family: monospace;
+  color: #818cf8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.bf-name:hover { text-decoration: underline; }
+.bf-size { color: #64748b; white-space: nowrap; font-size: 0.8rem; }
+.bf-date { color: #475569; white-space: nowrap; font-size: 0.78rem; }
+.bf-restore {
+  padding: 0.2rem 0.6rem;
+  font-size: 0.78rem;
   background: #23263a;
   color: #e2e8f0;
   border: 1px solid #2d3148;
+  border-radius: 5px;
   cursor: pointer;
-  transition: background 0.15s;
+  flex-shrink: 0;
+  font-weight: 600;
 }
-.bin-card .btn-restore-single:hover { background: #3b5bdb; color: #fff; border-color: #3b5bdb; }
+.bf-restore:hover { background: #3b5bdb; color: #fff; border-color: #3b5bdb; }
+
+/* ---- bin hover preview ---- */
+.bin-preview {
+  position: fixed;
+  z-index: 200;
+  background: #1a1d27;
+  border: 1px solid #3b5bdb44;
+  border-radius: 8px;
+  padding: 4px;
+  pointer-events: none;
+  display: none;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+}
+.bin-preview.visible { display: block; }
+.bin-preview img {
+  max-width: 280px;
+  max-height: 280px;
+  object-fit: contain;
+  display: block;
+  border-radius: 5px;
+}
 
 /* ---- footer ---- */
 footer {

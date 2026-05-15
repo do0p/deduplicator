@@ -745,6 +745,24 @@ function escHtml(s) {
 
 // ---- Recycle Bin View ----
 
+// Hover preview overlay — created once, positioned on mousemove.
+const binPreview = document.createElement('div');
+binPreview.className = 'bin-preview';
+const binPreviewImg = document.createElement('img');
+binPreview.appendChild(binPreviewImg);
+document.body.appendChild(binPreview);
+
+document.addEventListener('mousemove', e => {
+  if (!binPreview.classList.contains('visible')) return;
+  let x = e.clientX + 16;
+  let y = e.clientY - 16;
+  if (x + 296 > window.innerWidth)  x = e.clientX - 312;
+  if (y + 296 > window.innerHeight) y = window.innerHeight - 300;
+  if (y < 8) y = 8;
+  binPreview.style.left = x + 'px';
+  binPreview.style.top  = y + 'px';
+});
+
 function updateBinActionBar() {
   const n = selectedBinPaths.size;
   $('bin-sel-count').textContent = n > 0
@@ -759,9 +777,125 @@ function clearBinSelection() {
   updateBinActionBar();
 }
 
+// Build a nested tree from flat items using their relPath.
+function buildBinTree(items) {
+  const root = { children: {}, files: [] };
+  for (const item of items) {
+    const parts = item.relPath.split('/');
+    parts.pop(); // filename is already in item.name
+    let node = root;
+    for (const part of parts) {
+      if (!node.children[part]) {
+        node.children[part] = { name: part, children: {}, files: [] };
+      }
+      node = node.children[part];
+    }
+    node.files.push(item);
+  }
+  return root;
+}
+
+function renderBinNode(node, depth) {
+  const frag = document.createDocumentFragment();
+  const indent = depth * 1.2;
+
+  for (const [name, child] of Object.entries(node.children).sort((a, b) => a[0].localeCompare(b[0]))) {
+    const wrap = document.createElement('div');
+    wrap.className = 'bin-dir';
+
+    const hd = document.createElement('div');
+    hd.className = 'bin-dir-hd';
+    hd.style.paddingLeft = indent + 'rem';
+
+    const exp = document.createElement('span');
+    exp.className = 'expander';
+    exp.textContent = '▼';
+
+    const icon = document.createElement('span');
+    icon.className = 'icon';
+    icon.textContent = '📁';
+
+    const label = document.createElement('span');
+    label.textContent = name;
+
+    hd.append(exp, icon, label);
+
+    const body = document.createElement('div');
+    body.className = 'bin-dir-body';
+    body.appendChild(renderBinNode(child, depth + 1));
+
+    hd.addEventListener('click', () => {
+      const collapsed = body.style.display === 'none';
+      body.style.display = collapsed ? '' : 'none';
+      exp.textContent = collapsed ? '▼' : '▶';
+    });
+
+    wrap.append(hd, body);
+    frag.appendChild(wrap);
+  }
+
+  for (const item of node.files) {
+    frag.appendChild(renderBinFileRow(item, depth));
+  }
+
+  return frag;
+}
+
+function renderBinFileRow(item, depth) {
+  const row = document.createElement('div');
+  row.className = 'bin-file-row';
+  row.style.paddingLeft = (depth * 1.2 + 0.4) + 'rem';
+
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.className = 'bc-check';
+  cb.dataset.path = item.path;
+  cb.addEventListener('change', e => {
+    e.stopPropagation();
+    if (e.target.checked) selectedBinPaths.add(item.path);
+    else selectedBinPaths.delete(item.path);
+    updateBinActionBar();
+  });
+
+  const nameEl = document.createElement('span');
+  nameEl.className = 'bf-name';
+  nameEl.textContent = item.name;
+  nameEl.title = item.path;
+  nameEl.addEventListener('click', () => openModal(item.path));
+
+  const sizeEl = document.createElement('span');
+  sizeEl.className = 'bf-size';
+  sizeEl.textContent = fmt(item.size);
+
+  const dateEl = document.createElement('span');
+  dateEl.className = 'bf-date';
+  dateEl.textContent = fmtDate(item.modTime);
+
+  const restoreBtn = document.createElement('button');
+  restoreBtn.className = 'bf-restore';
+  restoreBtn.textContent = 'Restore';
+  restoreBtn.addEventListener('click', async e => {
+    e.stopPropagation();
+    await doRestore([item.path]);
+  });
+
+  row.append(cb, nameEl, sizeEl, dateEl, restoreBtn);
+
+  row.addEventListener('mouseenter', () => {
+    binPreviewImg.src = '/api/image?path=' + encodeURIComponent(item.path);
+    binPreview.classList.add('visible');
+  });
+  row.addEventListener('mouseleave', () => {
+    binPreview.classList.remove('visible');
+    binPreviewImg.src = '';
+  });
+
+  return row;
+}
+
 function renderBin() {
-  const grid = $('bin-grid');
-  grid.innerHTML = '';
+  const treeEl = $('bin-tree');
+  treeEl.innerHTML = '';
   $('bin-loading').style.display = 'none';
   $('bin-stats').textContent = binItems.length + ' item' + (binItems.length === 1 ? '' : 's');
 
@@ -770,63 +904,7 @@ function renderBin() {
     return;
   }
   $('bin-empty').style.display = 'none';
-
-  binItems.forEach(item => {
-    const card = document.createElement('div');
-    card.className = 'bin-card';
-
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.className = 'bc-check';
-    cb.dataset.path = item.path;
-    cb.addEventListener('change', e => {
-      e.stopPropagation();
-      if (e.target.checked) selectedBinPaths.add(item.path);
-      else selectedBinPaths.delete(item.path);
-      updateBinActionBar();
-    });
-
-    const img = document.createElement('img');
-    img.src = '/api/image?path=' + encodeURIComponent(item.path);
-    img.alt = item.name;
-    img.loading = 'lazy';
-    img.onerror = () => {
-      img.style.display = 'none';
-    };
-    img.addEventListener('click', ev => {
-      ev.stopPropagation();
-      openModal(item.path);
-    });
-
-    const nameEl = document.createElement('div');
-    nameEl.className = 'bc-name';
-    nameEl.textContent = item.name;
-    nameEl.title = item.path;
-
-    const origEl = document.createElement('div');
-    origEl.className = 'bc-orig';
-    origEl.textContent = item.originalPath ? 'From: ' + item.originalPath : item.path;
-    origEl.title = item.originalPath || '';
-
-    const sizeEl = document.createElement('div');
-    sizeEl.className = 'bc-size';
-    sizeEl.textContent = fmt(item.size);
-
-    const modEl = document.createElement('div');
-    modEl.className = 'bc-mod';
-    modEl.textContent = fmtDate(item.modTime);
-
-    const restoreBtn = document.createElement('button');
-    restoreBtn.className = 'btn-restore-single';
-    restoreBtn.textContent = 'Restore';
-    restoreBtn.addEventListener('click', async e => {
-      e.stopPropagation();
-      await doRestore([item.path]);
-    });
-
-    card.append(cb, img, nameEl, origEl, sizeEl, modEl, restoreBtn);
-    grid.appendChild(card);
-  });
+  treeEl.appendChild(renderBinNode(buildBinTree(binItems), 0));
 }
 
 async function doRestore(paths) {
@@ -845,14 +923,13 @@ async function doRestore(paths) {
       body: JSON.stringify({ paths }),
     });
     if (!res.ok) {
-      const text = await res.text();
-      alert('Restore failed: ' + text);
+      alert('Restore failed: ' + await res.text());
       return;
     }
     const data = await res.json();
     if (data.failed && data.failed.length > 0) {
-      const msgs = data.failed.map(f => basename(f.path) + ': ' + f.error).join('\n');
-      alert('Some files could not be restored:\n' + msgs);
+      alert('Some files could not be restored:\n' +
+        data.failed.map(f => basename(f.path) + ': ' + f.error).join('\n'));
     }
     const restoredSet = new Set(data.restored || []);
     binItems = binItems.filter(item => !restoredSet.has(item.path));
@@ -865,23 +942,18 @@ async function doRestore(paths) {
 }
 
 async function openBinView() {
-  // Track which view we came from to navigate back
   const active = document.querySelector('.view.active');
   previousView = active ? active.id.replace('view-', '') : 'setup';
 
   showView('bin');
   $('bin-loading').style.display = 'block';
   $('bin-empty').style.display = 'none';
-  $('bin-grid').innerHTML = '';
+  $('bin-tree').innerHTML = '';
   clearBinSelection();
 
   try {
     const res = await fetch('/api/bin');
-    if (res.ok) {
-      binItems = await res.json() || [];
-    } else {
-      binItems = [];
-    }
+    binItems = res.ok ? (await res.json() || []) : [];
   } catch (_) {
     binItems = [];
   }
@@ -891,6 +963,7 @@ async function openBinView() {
 $('btn-open-bin').addEventListener('click', openBinView);
 
 $('btn-back-from-bin').addEventListener('click', () => {
+  binPreview.classList.remove('visible');
   showView(previousView);
 });
 
