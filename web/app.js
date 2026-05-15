@@ -8,6 +8,7 @@ let sortAsc = false;
 let expandedRow = null;
 let selectedPaths = new Set();
 let recycleBinEnabled = false;
+let exactOnly = false;
 let binItems = [];
 let selectedBinPaths = new Set();
 let acceptedItems = [];
@@ -446,12 +447,18 @@ function groupWasted(g) {
   return groupTotalSize(g) - smallest;
 }
 
+function isExactGroup(g) {
+  const h = g.files[0]?.hash;
+  return g.files.every(f => f.hash === h);
+}
+
 function renderResults() {
   const filter = ($('filter-input').value || '').toLowerCase();
 
-  let groups = allGroups.filter(g =>
-    !filter || g.files.some(f => f.path.toLowerCase().includes(filter))
-  );
+  let groups = allGroups.filter(g => {
+    if (exactOnly && !isExactGroup(g)) return false;
+    return !filter || g.files.some(f => f.path.toLowerCase().includes(filter));
+  });
 
   groups.sort((a, b) => {
     let va, vb;
@@ -687,6 +694,7 @@ document.querySelectorAll('thead th[data-col]').forEach(th => {
 
 // ---- Filter ----
 $('filter-input').addEventListener('input', renderResults);
+$('exact-only').addEventListener('change', e => { exactOnly = e.target.checked; renderResults(); });
 
 // ---- Threshold slider ----
 $('threshold').addEventListener('input', () => {
