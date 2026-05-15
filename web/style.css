@@ -265,7 +265,8 @@ tbody td { padding: 0.55rem 0.75rem; vertical-align: middle; }
   gap: 0.25rem;
   max-width: 190px;
 }
-.file-card img {
+.file-card img,
+.file-card video {
   width: 160px;
   height: 120px;
   object-fit: cover;
@@ -273,8 +274,11 @@ tbody td { padding: 0.55rem 0.75rem; vertical-align: middle; }
   border: 2px solid #2d3148;
   cursor: zoom-in;
   transition: border-color 0.15s;
+  background: #0f1117;
+  display: block;
 }
-.file-card img:hover { border-color: #3b5bdb; }
+.file-card img:hover,
+.file-card video:hover { border-color: #3b5bdb; }
 .file-card .fc-name {
   font-size: 0.78rem;
   font-family: monospace;
@@ -332,7 +336,8 @@ tbody td { padding: 0.55rem 0.75rem; vertical-align: middle; }
   overflow: hidden;
 }
 
-#modal-img {
+#modal-img,
+#modal-video {
   max-width: 100%;
   max-height: calc(100vh - 8rem);
   object-fit: contain;

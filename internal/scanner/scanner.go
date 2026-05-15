@@ -2,10 +2,13 @@ package scanner
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -29,11 +32,19 @@ var imageExts = map[string]bool{
 	".tif": true, ".bmp": true,
 }
 
+var videoExts = map[string]bool{
+	".mp4": true, ".mov": true, ".avi": true, ".mkv": true,
+	".m4v": true, ".wmv": true, ".flv": true, ".webm": true,
+	".3gp": true, ".ts": true, ".mts": true, ".m2ts": true,
+}
+
 type FileRecord struct {
-	Path    string    `json:"path"`
-	Hash    uint64    `json:"hash"`
-	Size    int64     `json:"size"`
-	ModTime time.Time `json:"modTime"`
+	Path        string    `json:"path"`
+	Hash        uint64    `json:"hash"`
+	Size        int64     `json:"size"`
+	ModTime     time.Time `json:"modTime"`
+	IsVideo     bool      `json:"isVideo,omitempty"`
+	ContentHash string    `json:"contentHash,omitempty"`
 }
 
 type Progress struct {
@@ -121,7 +132,7 @@ func Scan(ctx context.Context, dirs []string, ignorePatterns []*regexp.Regexp, p
 				return nil
 			}
 			ext := strings.ToLower(filepath.Ext(path))
-			if !imageExts[ext] {
+			if !imageExts[ext] && !videoExts[ext] {
 				return nil
 			}
 			for _, re := range ignorePatterns {
@@ -146,7 +157,7 @@ func Scan(ctx context.Context, dirs []string, ignorePatterns []*regexp.Regexp, p
 	}
 
 	total := len(paths)
-	log.Printf("walk complete: found %d image files", total)
+	log.Printf("walk complete: found %d media files", total)
 	log.Printf("hashing started: %d files", total)
 	progress <- Progress{Phase: "scanning", Scanned: 0, Total: total}
 
@@ -165,7 +176,7 @@ func Scan(ctx context.Context, dirs []string, ignorePatterns []*regexp.Regexp, p
 				if ctx.Err() != nil {
 					continue // drain channel without hashing
 				}
-				rec, ok := hashFile(path)
+				rec, ok := hashRecord(path)
 				if !ok {
 					scanned.Add(1)
 					progress <- Progress{Phase: "scanning", Scanned: int(scanned.Load()), Total: total}
@@ -199,7 +210,15 @@ outer:
 	return records, nil
 }
 
-func hashFile(path string) (FileRecord, bool) {
+func hashRecord(path string) (FileRecord, bool) {
+	ext := strings.ToLower(filepath.Ext(path))
+	if videoExts[ext] {
+		return hashVideoFile(path)
+	}
+	return hashImageFile(path)
+}
+
+func hashImageFile(path string) (FileRecord, bool) {
 	f, err := os.Open(path)
 	if err != nil {
 		return FileRecord{}, false
@@ -227,5 +246,32 @@ func hashFile(path string) (FileRecord, bool) {
 		Hash:    h.GetHash(),
 		Size:    info.Size(),
 		ModTime: info.ModTime(),
+	}, true
+}
+
+func hashVideoFile(path string) (FileRecord, bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		return FileRecord{}, false
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return FileRecord{}, false
+	}
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		log.Printf("hash error %s: %v", path, err)
+		return FileRecord{}, false
+	}
+
+	return FileRecord{
+		Path:        path,
+		Size:        info.Size(),
+		ModTime:     info.ModTime(),
+		IsVideo:     true,
+		ContentHash: fmt.Sprintf("%x", h.Sum(nil)),
 	}, true
 }

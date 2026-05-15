@@ -18,6 +18,10 @@ let previousView = 'setup';
 // ---- Utilities ----
 const $ = id => document.getElementById(id);
 
+function isVideo(path) {
+  return /\.(mp4|mov|avi|mkv|m4v|wmv|flv|webm|3gp|ts|mts|m2ts)$/i.test(path);
+}
+
 function showView(name) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   $('view-' + name).classList.add('active');
@@ -231,8 +235,8 @@ function startProgress() {
       bar.removeAttribute('value'); // indeterminate
       counter.textContent = '';
     } else if (p.phase === 'scanning') {
-      title.textContent = 'Hashing images…';
-      phaseLabel.textContent = 'Computing perceptual hashes…';
+      title.textContent = 'Hashing media files…';
+      phaseLabel.textContent = 'Computing hashes…';
       if (p.total > 0) {
         bar.value = p.scanned;
         bar.max = p.total;
@@ -364,9 +368,8 @@ function showConfirm(title, desc, filenames) {
 
 $('confirm-cancel').addEventListener('click', () => {}); // prevent bubbling setup duplication
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && $('confirm-modal').classList.contains('open')) {
+  if (e.key === 'Escape' && $('confirm-modal').classList.contains('open'))
     $('confirm-modal').classList.remove('open');
-  }
 });
 $('confirm-modal').addEventListener('click', e => {
   if (e.target === $('confirm-modal')) $('confirm-modal').classList.remove('open');
@@ -562,11 +565,19 @@ function toggleDetail(tr, g) {
       onFileCheckChange(e);
     });
 
-    const img = document.createElement('img');
-    img.src = '/api/image?path=' + encodeURIComponent(f.path);
-    img.alt = basename(f.path);
-    img.loading = 'lazy';
-    img.addEventListener('click', ev => {
+    let thumb;
+    if (isVideo(f.path)) {
+      thumb = document.createElement('video');
+      thumb.src = '/api/image?path=' + encodeURIComponent(f.path);
+      thumb.muted = true;
+      thumb.preload = 'metadata';
+    } else {
+      thumb = document.createElement('img');
+      thumb.src = '/api/image?path=' + encodeURIComponent(f.path);
+      thumb.alt = basename(f.path);
+      thumb.loading = 'lazy';
+    }
+    thumb.addEventListener('click', ev => {
       ev.stopPropagation();
       openModal(f.path);
     });
@@ -589,7 +600,7 @@ function toggleDetail(tr, g) {
     modEl.className = 'fc-mod';
     modEl.textContent = fmtDate(f.modTime);
 
-    card.append(cb, img, nameEl, folderEl, sizeEl, modEl);
+    card.append(cb, thumb, nameEl, folderEl, sizeEl, modEl);
     inner.appendChild(card);
   });
 
@@ -602,8 +613,23 @@ function toggleDetail(tr, g) {
 const tbody = document.getElementById('results-body');
 
 // ---- Modal ----
+function stopModalVideo() {
+  const v = $('modal-video');
+  v.pause();
+  v.src = '';
+}
+
 async function openModal(path) {
-  $('modal-img').src = '/api/image?path=' + encodeURIComponent(path);
+  const url = '/api/image?path=' + encodeURIComponent(path);
+  if (isVideo(path)) {
+    $('modal-img').style.display = 'none';
+    $('modal-video').style.display = '';
+    $('modal-video').src = url;
+  } else {
+    $('modal-img').style.display = '';
+    $('modal-video').style.display = 'none';
+    $('modal-img').src = url;
+  }
   $('modal-info').innerHTML = '<div class="mi-loading">Loading…</div>';
   $('modal').classList.add('open');
 
@@ -671,12 +697,16 @@ function renderModalInfo(info) {
   $('modal-info').innerHTML = html;
 }
 
-$('modal-close').addEventListener('click', () => $('modal').classList.remove('open'));
-$('modal').addEventListener('click', e => {
-  if (e.target === $('modal')) $('modal').classList.remove('open');
-});
+function closeModal() {
+  $('modal').classList.remove('open');
+  stopModalVideo();
+}
+$('modal-close').addEventListener('click', closeModal);
+$('modal').addEventListener('click', e => { if (e.target === $('modal')) closeModal(); });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') $('modal').classList.remove('open');
+  if (e.key === 'Escape') {
+    if ($('modal').classList.contains('open')) closeModal();
+  }
 });
 
 // ---- Sorting ----
@@ -821,7 +851,7 @@ function renderAcceptedFileRow(item, depth) {
 
   row.append(cb, nameEl, sizeEl, dateEl, revertBtn);
 
-  if (!item.missing) {
+  if (!item.missing && !isVideo(item.path)) {
     row.addEventListener('mouseenter', () => {
       acceptedPreviewImg.src = '/api/image?path=' + encodeURIComponent(item.path);
       acceptedPreview.classList.add('visible');
@@ -1082,14 +1112,16 @@ function renderBinFileRow(item, depth) {
 
   row.append(cb, nameEl, sizeEl, dateEl, restoreBtn);
 
-  row.addEventListener('mouseenter', () => {
-    binPreviewImg.src = '/api/image?path=' + encodeURIComponent(item.path);
-    binPreview.classList.add('visible');
-  });
-  row.addEventListener('mouseleave', () => {
-    binPreview.classList.remove('visible');
-    binPreviewImg.src = '';
-  });
+  if (!isVideo(item.path)) {
+    row.addEventListener('mouseenter', () => {
+      binPreviewImg.src = '/api/image?path=' + encodeURIComponent(item.path);
+      binPreview.classList.add('visible');
+    });
+    row.addEventListener('mouseleave', () => {
+      binPreview.classList.remove('visible');
+      binPreviewImg.src = '';
+    });
+  }
 
   return row;
 }

@@ -45,16 +45,47 @@ func hamming(a, b uint64) int {
 }
 
 // FindDuplicates groups records into duplicate sets.
+// Images: pHash Hamming distance ≤ threshold (existing two-pass logic).
+// Videos: exact SHA-256 content hash match.
+func FindDuplicates(records []scanner.FileRecord, threshold int) []DuplicateGroup {
+	var images, videos []scanner.FileRecord
+	for _, r := range records {
+		if r.IsVideo {
+			videos = append(videos, r)
+		} else {
+			images = append(images, r)
+		}
+	}
+	groups := findImageDuplicates(images, threshold)
+	groups = append(groups, findVideoDuplicates(videos)...)
+	return groups
+}
+
+func findVideoDuplicates(videos []scanner.FileRecord) []DuplicateGroup {
+	byHash := make(map[string][]scanner.FileRecord)
+	for _, v := range videos {
+		if v.ContentHash != "" {
+			byHash[v.ContentHash] = append(byHash[v.ContentHash], v)
+		}
+	}
+	var groups []DuplicateGroup
+	for _, files := range byHash {
+		if len(files) >= 2 {
+			groups = append(groups, DuplicateGroup{Files: files})
+		}
+	}
+	return groups
+}
+
+// findImageDuplicates groups images by pHash similarity.
 // Pass 1: exact pHash match (O(n)).
 // Pass 2: near-duplicate Hamming distance (parallel O(n²)).
-func FindDuplicates(records []scanner.FileRecord, threshold int) []DuplicateGroup {
-	// Pass 1: exact grouping
-	byHash := map[uint64][]int{} // hash → indices into records
+func findImageDuplicates(records []scanner.FileRecord, threshold int) []DuplicateGroup {
+	byHash := map[uint64][]int{}
 	for i, r := range records {
 		byHash[r.Hash] = append(byHash[r.Hash], i)
 	}
 
-	// Indices already grouped exactly; singletons go to near-dup pass
 	used := make([]bool, len(records))
 	var exactGroups [][]int
 	var singletons []int
@@ -70,7 +101,6 @@ func FindDuplicates(records []scanner.FileRecord, threshold int) []DuplicateGrou
 		}
 	}
 
-	// Pass 2: near-duplicate detection among singletons
 	n := len(singletons)
 	uf := newUnionFind(n)
 
@@ -114,14 +144,12 @@ func FindDuplicates(records []scanner.FileRecord, threshold int) []DuplicateGrou
 		wg.Wait()
 	}
 
-	// Collect near-dup groups from Union-Find
-	nearGroups := map[int][]int{} // root → singleton indices
+	nearGroups := map[int][]int{}
 	for i := range singletons {
 		root := uf.find(i)
 		nearGroups[root] = append(nearGroups[root], i)
 	}
 
-	// Build result
 	var groups []DuplicateGroup
 
 	for _, idxs := range exactGroups {
@@ -143,6 +171,6 @@ func FindDuplicates(records []scanner.FileRecord, threshold int) []DuplicateGrou
 		groups = append(groups, g)
 	}
 
-	_ = used // used to mark exact-grouped items; near-dup pass only considers singletons
+	_ = used
 	return groups
 }
