@@ -31,6 +31,7 @@ import (
 
 type Server struct {
 	mountRoot  string
+	version    string
 	state      scanState
 	subs       subscribers
 	fs         http.Handler
@@ -98,8 +99,8 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-func New(mountRoot string, webFS http.Handler) *Server {
-	return &Server{mountRoot: mountRoot, fs: webFS}
+func New(mountRoot, version string, webFS http.Handler) *Server {
+	return &Server{mountRoot: mountRoot, version: version, fs: webFS}
 }
 
 func (s *Server) RegisterRoutes(mux *http.ServeMux) {
@@ -110,8 +111,13 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/results", s.handleResults)
 	mux.HandleFunc("GET /api/image", s.handleImage)
 	mux.HandleFunc("GET /api/fileinfo", s.handleFileInfo)
+	mux.HandleFunc("GET /api/version", s.handleVersion)
 	mux.HandleFunc("GET /ws", s.handleWS)
 	mux.Handle("/", s.fs)
+}
+
+func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, map[string]string{"version": s.version})
 }
 
 // safePath validates that the requested path is within mountRoot.

@@ -12,7 +12,7 @@ import (
 )
 
 func newTestServer(mountRoot string) *Server {
-	return New(mountRoot, http.NotFoundHandler())
+	return New(mountRoot, "dev", http.NotFoundHandler())
 }
 
 // ---- safePath ----

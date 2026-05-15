@@ -13,6 +13,9 @@ import (
 //go:embed web
 var webFiles embed.FS
 
+// version is set at build time via -ldflags "-X main.version=x.y.z".
+var version = "dev"
+
 func main() {
 	mountRoot := os.Getenv("MOUNT_ROOT")
 	if mountRoot == "" {
@@ -29,7 +32,7 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	srv := server.New(mountRoot, http.FileServer(http.FS(subFS)))
+	srv := server.New(mountRoot, version, http.FileServer(http.FS(subFS)))
 	srv.RegisterRoutes(mux)
 
 	log.Printf("listening on :%s  mount=%s", port, mountRoot)

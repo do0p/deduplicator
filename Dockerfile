@@ -3,8 +3,9 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -ldflags="-s -w" -o duplicates .
+RUN VERSION=$(cat VERSION) && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -ldflags="-s -w -X main.version=${VERSION}" -o duplicates .
 
 FROM alpine:latest
 RUN apk add --no-cache ca-certificates && \

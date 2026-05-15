@@ -1,4 +1,4 @@
-# Duplicate Image Finder
+# Deduplicator
 
 A self-contained Docker application that scans large image collections (100k+ files) for visual duplicates using perceptual hashing (pHash), regardless of filename or resolution. Interact via a browser-based UI served by the container.
 

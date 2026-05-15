@@ -581,6 +581,15 @@ function escHtml(s) {
 
 // ---- Init ----
 (async () => {
+  // Load version badge.
+  try {
+    const res = await fetch('/api/version');
+    if (res.ok) {
+      const { version } = await res.json();
+      $('version-badge').textContent = 'v' + version;
+    }
+  } catch (_) {}
+
   try {
     const res = await fetch('/api/status');
     const status = await res.json();
