@@ -26,6 +26,30 @@ function basename(path) {
   return path.split('/').pop();
 }
 
+function dirname(path) {
+  const i = path.lastIndexOf('/');
+  return i > 0 ? path.substring(0, i) : path;
+}
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+      + ' · ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  } catch (_) { return iso; }
+}
+
+// EXIF dates look like "2023:05:14 10:30:00" — normalize colons before parsing.
+function fmtExifDate(s) {
+  if (!s) return '';
+  const norm = s.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3');
+  const d = new Date(norm);
+  if (isNaN(d)) return s;
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+    + ' · ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+}
+
 // ---- View 1: Folder Tree ----
 
 // Sets all checkboxes with data-path inside container to checked/unchecked,
@@ -378,14 +402,23 @@ function toggleDetail(tr, g) {
 
     const nameEl = document.createElement('div');
     nameEl.className = 'fc-name';
-    nameEl.textContent = f.path;
+    nameEl.textContent = basename(f.path);
     nameEl.title = f.path;
+
+    const folderEl = document.createElement('div');
+    folderEl.className = 'fc-folder';
+    folderEl.textContent = dirname(f.path);
+    folderEl.title = dirname(f.path);
 
     const sizeEl = document.createElement('div');
     sizeEl.className = 'fc-size';
     sizeEl.textContent = fmt(f.size);
 
-    card.append(img, nameEl, sizeEl);
+    const modEl = document.createElement('div');
+    modEl.className = 'fc-mod';
+    modEl.textContent = fmtDate(f.modTime);
+
+    card.append(img, nameEl, folderEl, sizeEl, modEl);
     inner.appendChild(card);
   });
 
@@ -398,9 +431,73 @@ function toggleDetail(tr, g) {
 const tbody = document.getElementById('results-body');
 
 // ---- Modal ----
-function openModal(path) {
+async function openModal(path) {
   $('modal-img').src = '/api/image?path=' + encodeURIComponent(path);
+  $('modal-info').innerHTML = '<div class="mi-loading">Loading…</div>';
   $('modal').classList.add('open');
+
+  try {
+    const res = await fetch('/api/fileinfo?path=' + encodeURIComponent(path));
+    if (res.ok) renderModalInfo(await res.json());
+    else $('modal-info').innerHTML = '<div class="mi-loading">No info available.</div>';
+  } catch (_) {
+    $('modal-info').innerHTML = '<div class="mi-loading">Could not load info.</div>';
+  }
+}
+
+function renderModalInfo(info) {
+  const rows = [
+    ['Filename', escHtml(info.name)],
+    ['Folder',   escHtml(info.folder)],
+    ['Size',     fmt(info.size)],
+    ['Modified', fmtDate(info.modTime)],
+  ];
+
+  if (info.width && info.height) {
+    rows.push(['Resolution', info.width + ' × ' + info.height + ' px']);
+  }
+
+  if (info.exif) {
+    const taken = info.exif['DateTimeOriginal'] || info.exif['DateTime'];
+    if (taken) rows.push(['Taken', fmtExifDate(taken)]);
+    const camera = [info.exif['Make'], info.exif['Model']].filter(Boolean).join(' ');
+    if (camera) rows.push(['Camera', escHtml(camera)]);
+    const lens = info.exif['LensModel'];
+    if (lens) rows.push(['Lens', escHtml(lens)]);
+    const iso = info.exif['ISOSpeedRatings'];
+    if (iso) rows.push(['ISO', escHtml(iso)]);
+    const exp = info.exif['ExposureTime'];
+    if (exp) rows.push(['Exposure', escHtml(exp) + ' s']);
+    const fNumber = info.exif['FNumber'];
+    if (fNumber) rows.push(['Aperture', 'f/' + escHtml(fNumber)]);
+    const fl = info.exif['FocalLength'];
+    if (fl) rows.push(['Focal length', escHtml(fl)]);
+  }
+
+  if (info.hasGPS) {
+    const lat = info.lat.toFixed(6);
+    const lon = info.lon.toFixed(6);
+    const url = 'https://www.google.com/maps?q=' + lat + ',' + lon;
+    rows.push(['Location', '<a href="' + url + '" target="_blank" rel="noopener" class="maps-link">📍 ' + lat + ', ' + lon + '</a>']);
+  }
+
+  let html = '<div class="mi-table">';
+  for (const [k, v] of rows) {
+    html += '<div class="mi-row"><div class="mi-key">' + k + '</div><div class="mi-val">' + v + '</div></div>';
+  }
+  html += '</div>';
+
+  const exifEntries = info.exif ? Object.entries(info.exif).sort((a, b) => a[0].localeCompare(b[0])) : [];
+  if (exifEntries.length > 0) {
+    html += '<div class="mi-section-hd">All EXIF data</div>';
+    html += '<div class="exif-table">';
+    for (const [k, v] of exifEntries) {
+      html += '<div class="exif-row"><div class="exif-key">' + escHtml(k) + '</div><div class="exif-val">' + escHtml(v) + '</div></div>';
+    }
+    html += '</div>';
+  }
+
+  $('modal-info').innerHTML = html;
 }
 
 $('modal-close').addEventListener('click', () => $('modal').classList.remove('open'));

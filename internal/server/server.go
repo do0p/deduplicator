@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"image"
 	"log"
 	"net/http"
 	"net/url"
@@ -14,9 +15,18 @@ import (
 	"sync"
 	"time"
 
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
+
 	"github.com/dominik/duplicates/internal/matcher"
 	"github.com/dominik/duplicates/internal/scanner"
 	"github.com/gorilla/websocket"
+	"github.com/rwcarlsen/goexif/exif"
+	"github.com/rwcarlsen/goexif/tiff"
+	_ "golang.org/x/image/bmp"
+	_ "golang.org/x/image/tiff"
+	_ "golang.org/x/image/webp"
 )
 
 type Server struct {
@@ -99,6 +109,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/status", s.handleStatus)
 	mux.HandleFunc("GET /api/results", s.handleResults)
 	mux.HandleFunc("GET /api/image", s.handleImage)
+	mux.HandleFunc("GET /api/fileinfo", s.handleFileInfo)
 	mux.HandleFunc("GET /ws", s.handleWS)
 	mux.Handle("/", s.fs)
 }
@@ -344,6 +355,91 @@ func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	http.ServeFile(w, r, real)
+}
+
+// exifCollector implements exif.Walker to gather all EXIF tags into a map.
+type exifCollector map[string]string
+
+func (c exifCollector) Walk(name exif.FieldName, tag *tiff.Tag) error {
+	s := tag.String()
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		s = s[1 : len(s)-1]
+	}
+	c[string(name)] = s
+	return nil
+}
+
+func (s *Server) handleFileInfo(w http.ResponseWriter, r *http.Request) {
+	reqPath := r.URL.Query().Get("path")
+	safe, ok := s.safePath(reqPath)
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	real, err := filepath.EvalSymlinks(safe)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	if _, ok2 := s.safePath(real); !ok2 {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	f, err := os.Open(real)
+	if err != nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	cfg, _, _ := image.DecodeConfig(f)
+	if _, err := f.Seek(0, 0); err != nil {
+		http.Error(w, "seek error", http.StatusInternalServerError)
+		return
+	}
+
+	var exifData exifCollector
+	var lat, lon float64
+	hasGPS := false
+	if x, err := exif.Decode(f); err == nil {
+		exifData = exifCollector{}
+		x.Walk(exifData) //nolint:errcheck
+		if la, lo, err := x.LatLong(); err == nil {
+			lat, lon, hasGPS = la, lo, true
+		}
+	}
+
+	type response struct {
+		Name    string        `json:"name"`
+		Folder  string        `json:"folder"`
+		Size    int64         `json:"size"`
+		ModTime time.Time     `json:"modTime"`
+		Width   int           `json:"width,omitempty"`
+		Height  int           `json:"height,omitempty"`
+		EXIF    exifCollector `json:"exif,omitempty"`
+		HasGPS  bool          `json:"hasGPS"`
+		Lat     float64       `json:"lat"`
+		Lon     float64       `json:"lon"`
+	}
+	writeJSON(w, response{
+		Name:    filepath.Base(real),
+		Folder:  filepath.Dir(real),
+		Size:    stat.Size(),
+		ModTime: stat.ModTime(),
+		Width:   cfg.Width,
+		Height:  cfg.Height,
+		EXIF:    exifData,
+		HasGPS:  hasGPS,
+		Lat:     lat,
+		Lon:     lon,
+	})
 }
 
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
