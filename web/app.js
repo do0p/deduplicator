@@ -773,6 +773,7 @@ async function goToSetup() {
 }
 
 $('btn-new-scan').addEventListener('click', goToSetup);
+document.querySelector('header h1').addEventListener('click', goToSetup);
 $('btn-abort').addEventListener('click', async () => {
   try { await fetch('/api/cancel', { method: 'POST' }); } catch (_) {}
   goToSetup();

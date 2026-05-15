@@ -634,14 +634,19 @@ func (s *Server) handleResults(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "scan not complete", http.StatusConflict)
 		return
 	}
-	// Filter out accepted files; drop groups that shrink below 2.
+	// Filter out accepted files and files that no longer exist on disk
+	// (e.g. moved to the recycle bin). Drop groups that shrink below 2.
 	filtered := make([]matcher.DuplicateGroup, 0, len(s.state.results))
 	for _, g := range s.state.results {
 		var kept []scanner.FileRecord
 		for _, f := range g.Files {
-			if !s.accepted.IsAccepted(f.Path) {
-				kept = append(kept, f)
+			if s.accepted.IsAccepted(f.Path) {
+				continue
 			}
+			if _, err := os.Stat(f.Path); err != nil {
+				continue
+			}
+			kept = append(kept, f)
 		}
 		if len(kept) >= 2 {
 			filtered = append(filtered, matcher.DuplicateGroup{Files: kept})
