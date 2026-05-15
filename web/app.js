@@ -231,7 +231,11 @@ function startProgress() {
         bar.value = p.scanned;
         bar.max = p.total;
 
-        if (p.scanned > 0 && !hashStartTime) hashStartTime = Date.now();
+        if (p.scanned > 0 && !hashStartTime) {
+          const stored = localStorage.getItem('hashStartTime');
+          hashStartTime = stored ? parseInt(stored, 10) : Date.now();
+          if (!stored) localStorage.setItem('hashStartTime', String(hashStartTime));
+        }
 
         const now = Date.now();
         if (now - lastCounterUpdate >= 1000) {
@@ -255,14 +259,17 @@ function startProgress() {
       bar.value = bar.max = 1;
       counter.textContent = p.total.toLocaleString() + ' files hashed';
     } else if (p.phase === 'done') {
+      localStorage.removeItem('hashStartTime');
       closedIntentionally = true;
       ws.close();
       loadResults();
     } else if (p.phase === 'cancelled') {
+      localStorage.removeItem('hashStartTime');
       closedIntentionally = true;
       ws.close();
       // goToSetup() will be called by the cancel button click handler.
     } else if (p.phase === 'error') {
+      localStorage.removeItem('hashStartTime');
       title.textContent = 'Error';
       phaseLabel.textContent = 'Error: ' + (p.error || 'unknown');
       counter.textContent = '';
@@ -684,6 +691,7 @@ $('threshold').addEventListener('input', () => {
 // ---- Start scan ----
 $('btn-scan').addEventListener('click', async () => {
   if (selectedDirs.size === 0) return;
+  localStorage.removeItem('hashStartTime');
 
   const ignoreRaw = $('ignore-patterns').value;
   const ignoreRegexes = ignoreRaw.split('\n').map(s => s.trim()).filter(Boolean);
