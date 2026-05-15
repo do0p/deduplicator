@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"net/url"
@@ -126,6 +127,8 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/config", s.handleConfig)
 	mux.HandleFunc("POST /api/accept", s.handleAccept)
 	mux.HandleFunc("POST /api/trash", s.handleTrash)
+	mux.HandleFunc("GET /api/bin", s.handleBin)
+	mux.HandleFunc("POST /api/restore", s.handleRestore)
 	mux.HandleFunc("GET /ws", s.handleWS)
 	mux.Handle("/", s.fs)
 }
@@ -252,6 +255,109 @@ func moveFile(src, dst string) error {
 		return err
 	}
 	return os.Remove(src)
+}
+
+// safeBinPath validates that the requested path is within recycleBin.
+func (s *Server) safeBinPath(requested string) (string, bool) {
+	if s.recycleBin == "" {
+		return "", false
+	}
+	var full string
+	if filepath.IsAbs(requested) {
+		full = requested
+	} else {
+		full = filepath.Join(s.recycleBin, requested)
+	}
+	clean := filepath.Clean(full)
+	root := s.recycleBin + string(filepath.Separator)
+	if clean != s.recycleBin && !strings.HasPrefix(clean, root) {
+		return "", false
+	}
+	return clean, true
+}
+
+func (s *Server) handleBin(w http.ResponseWriter, r *http.Request) {
+	if s.recycleBin == "" {
+		writeJSON(w, []any{})
+		return
+	}
+	type binItem struct {
+		Path         string    `json:"path"`
+		Name         string    `json:"name"`
+		Size         int64     `json:"size"`
+		ModTime      time.Time `json:"modTime"`
+		OriginalPath string    `json:"originalPath"`
+	}
+	var items []binItem
+	filepath.WalkDir(s.recycleBin, func(path string, d fs.DirEntry, err error) error { //nolint:errcheck
+		if err != nil || d.IsDir() || strings.HasSuffix(path, ".meta") {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		rel, _ := filepath.Rel(s.recycleBin, path)
+		origPath := filepath.Join(s.mountRoot, rel)
+		items = append(items, binItem{
+			Path:         path,
+			Name:         filepath.Base(path),
+			Size:         info.Size(),
+			ModTime:      info.ModTime(),
+			OriginalPath: origPath,
+		})
+		return nil
+	})
+	if items == nil {
+		items = []binItem{}
+	}
+	writeJSON(w, items)
+}
+
+func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
+	if s.recycleBin == "" {
+		http.Error(w, "recycle bin not configured", http.StatusForbidden)
+		return
+	}
+	var req struct {
+		Paths []string `json:"paths"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	type failEntry struct {
+		Path  string `json:"path"`
+		Error string `json:"error"`
+	}
+	var restored []string
+	var failed []failEntry
+
+	for _, p := range req.Paths {
+		sp, ok := s.safeBinPath(p)
+		if !ok {
+			failed = append(failed, failEntry{Path: p, Error: "forbidden"})
+			continue
+		}
+		rel, err := filepath.Rel(s.recycleBin, sp)
+		if err != nil {
+			failed = append(failed, failEntry{Path: p, Error: err.Error()})
+			continue
+		}
+		origPath := filepath.Join(s.mountRoot, rel)
+		if err := os.MkdirAll(filepath.Dir(origPath), 0755); err != nil {
+			failed = append(failed, failEntry{Path: p, Error: "mkdir: " + err.Error()})
+			continue
+		}
+		if err := moveFile(sp, origPath); err != nil {
+			failed = append(failed, failEntry{Path: p, Error: err.Error()})
+			continue
+		}
+		restored = append(restored, p)
+	}
+
+	writeJSON(w, map[string]any{"restored": restored, "failed": failed})
 }
 
 // safePath validates that the requested path is within mountRoot.

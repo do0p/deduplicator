@@ -8,6 +8,9 @@ let sortAsc = false;
 let expandedRow = null;
 let selectedPaths = new Set();
 let recycleBinEnabled = false;
+let binItems = [];
+let selectedBinPaths = new Set();
+let previousView = 'setup';
 
 // ---- Utilities ----
 const $ = id => document.getElementById(id);
@@ -740,6 +743,164 @@ function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ---- Recycle Bin View ----
+
+function updateBinActionBar() {
+  const n = selectedBinPaths.size;
+  $('bin-sel-count').textContent = n > 0
+    ? n + ' item' + (n === 1 ? '' : 's') + ' selected'
+    : 'No items selected';
+  $('btn-restore').disabled = n === 0;
+}
+
+function clearBinSelection() {
+  selectedBinPaths.clear();
+  document.querySelectorAll('.bc-check').forEach(cb => { cb.checked = false; });
+  updateBinActionBar();
+}
+
+function renderBin() {
+  const grid = $('bin-grid');
+  grid.innerHTML = '';
+  $('bin-loading').style.display = 'none';
+  $('bin-stats').textContent = binItems.length + ' item' + (binItems.length === 1 ? '' : 's');
+
+  if (binItems.length === 0) {
+    $('bin-empty').style.display = 'block';
+    return;
+  }
+  $('bin-empty').style.display = 'none';
+
+  binItems.forEach(item => {
+    const card = document.createElement('div');
+    card.className = 'bin-card';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'bc-check';
+    cb.dataset.path = item.path;
+    cb.addEventListener('change', e => {
+      e.stopPropagation();
+      if (e.target.checked) selectedBinPaths.add(item.path);
+      else selectedBinPaths.delete(item.path);
+      updateBinActionBar();
+    });
+
+    const img = document.createElement('img');
+    img.src = '/api/image?path=' + encodeURIComponent(item.path);
+    img.alt = item.name;
+    img.loading = 'lazy';
+    img.onerror = () => {
+      img.style.display = 'none';
+    };
+    img.addEventListener('click', ev => {
+      ev.stopPropagation();
+      openModal(item.path);
+    });
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'bc-name';
+    nameEl.textContent = item.name;
+    nameEl.title = item.path;
+
+    const origEl = document.createElement('div');
+    origEl.className = 'bc-orig';
+    origEl.textContent = item.originalPath ? 'From: ' + item.originalPath : item.path;
+    origEl.title = item.originalPath || '';
+
+    const sizeEl = document.createElement('div');
+    sizeEl.className = 'bc-size';
+    sizeEl.textContent = fmt(item.size);
+
+    const modEl = document.createElement('div');
+    modEl.className = 'bc-mod';
+    modEl.textContent = fmtDate(item.modTime);
+
+    const restoreBtn = document.createElement('button');
+    restoreBtn.className = 'btn-restore-single';
+    restoreBtn.textContent = 'Restore';
+    restoreBtn.addEventListener('click', async e => {
+      e.stopPropagation();
+      await doRestore([item.path]);
+    });
+
+    card.append(cb, img, nameEl, origEl, sizeEl, modEl, restoreBtn);
+    grid.appendChild(card);
+  });
+}
+
+async function doRestore(paths) {
+  const names = paths.map(p => basename(p));
+  const confirmed = await showConfirm(
+    'Restore ' + paths.length + ' item' + (paths.length === 1 ? '' : 's') + '?',
+    'The file' + (paths.length === 1 ? '' : 's') + ' will be moved back to ' + (paths.length === 1 ? 'its' : 'their') + ' original location.',
+    names
+  );
+  if (!confirmed) return;
+
+  try {
+    const res = await fetch('/api/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paths }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      alert('Restore failed: ' + text);
+      return;
+    }
+    const data = await res.json();
+    if (data.failed && data.failed.length > 0) {
+      const msgs = data.failed.map(f => basename(f.path) + ': ' + f.error).join('\n');
+      alert('Some files could not be restored:\n' + msgs);
+    }
+    const restoredSet = new Set(data.restored || []);
+    binItems = binItems.filter(item => !restoredSet.has(item.path));
+    selectedBinPaths = new Set([...selectedBinPaths].filter(p => !restoredSet.has(p)));
+    renderBin();
+    updateBinActionBar();
+  } catch (err) {
+    alert('Request failed: ' + err.message);
+  }
+}
+
+async function openBinView() {
+  // Track which view we came from to navigate back
+  const active = document.querySelector('.view.active');
+  previousView = active ? active.id.replace('view-', '') : 'setup';
+
+  showView('bin');
+  $('bin-loading').style.display = 'block';
+  $('bin-empty').style.display = 'none';
+  $('bin-grid').innerHTML = '';
+  clearBinSelection();
+
+  try {
+    const res = await fetch('/api/bin');
+    if (res.ok) {
+      binItems = await res.json() || [];
+    } else {
+      binItems = [];
+    }
+  } catch (_) {
+    binItems = [];
+  }
+  renderBin();
+}
+
+$('btn-open-bin').addEventListener('click', openBinView);
+
+$('btn-back-from-bin').addEventListener('click', () => {
+  showView(previousView);
+});
+
+$('btn-bin-clear-sel').addEventListener('click', clearBinSelection);
+
+$('btn-restore').addEventListener('click', async () => {
+  if (selectedBinPaths.size === 0) return;
+  await doRestore([...selectedBinPaths]);
+});
+
 // ---- Init ----
 (async () => {
   // Load version badge.
@@ -757,7 +918,10 @@ function escHtml(s) {
     if (res.ok) {
       const cfg = await res.json();
       recycleBinEnabled = cfg.recycleBinEnabled;
-      if (recycleBinEnabled) $('opt-trash').style.display = '';
+      if (recycleBinEnabled) {
+        $('opt-trash').style.display = '';
+        $('btn-open-bin').style.display = '';
+      }
     }
   } catch (_) {}
 

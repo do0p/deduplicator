@@ -10,6 +10,7 @@
 
 <header>
   <h1>Find Duplicate Images</h1>
+  <button class="btn btn-secondary btn-bin" id="btn-open-bin" style="display:none">🗑 Recycle Bin</button>
 </header>
 
 <!-- VIEW 1: Setup -->
@@ -86,6 +87,29 @@
     <tbody id="results-body"></tbody>
   </table>
   <div id="no-results" class="no-results" style="display:none">No duplicate groups found.</div>
+</div>
+
+<!-- VIEW 4: Recycle Bin -->
+<div id="view-bin" class="view">
+  <div class="results-header">
+    <div>
+      <h2>Recycle Bin</h2>
+      <div class="stats" id="bin-stats"></div>
+    </div>
+    <button class="btn btn-secondary" id="btn-back-from-bin">← Back</button>
+  </div>
+
+  <div id="bin-action-bar" class="action-bar">
+    <span id="bin-sel-count">No items selected</span>
+    <div class="action-bar-right">
+      <button class="btn btn-primary" id="btn-restore" disabled>Restore selected</button>
+      <button class="btn btn-secondary" id="btn-bin-clear-sel">Clear selection</button>
+    </div>
+  </div>
+
+  <div id="bin-grid" class="bin-grid"></div>
+  <div id="bin-empty" class="no-results" style="display:none">Recycle Bin is empty.</div>
+  <div id="bin-loading" class="no-results">Loading…</div>
 </div>
 
 <!-- Confirmation modal -->
