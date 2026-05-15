@@ -211,6 +211,7 @@ function startProgress() {
 
   let closedIntentionally = false;
   let hashStartTime = null;
+  let lastCounterUpdate = 0;
 
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}/ws`);
@@ -232,18 +233,21 @@ function startProgress() {
 
         if (p.scanned > 0 && !hashStartTime) hashStartTime = Date.now();
 
-        let eta = '';
-        if (hashStartTime && p.scanned > 0) {
-          const elapsed = Date.now() - hashStartTime;
-          // Only show ETA after 5 s of data to avoid wild early estimates.
-          if (elapsed >= 5000) {
-            const msPerFile = elapsed / p.scanned;
-            const remaining = (p.total - p.scanned) * msPerFile;
-            eta = ' · ' + fmtDuration(remaining) + ' remaining';
+        const now = Date.now();
+        if (now - lastCounterUpdate >= 1000) {
+          lastCounterUpdate = now;
+          let eta = '';
+          if (hashStartTime && p.scanned > 0) {
+            const elapsed = now - hashStartTime;
+            // Only show ETA after 5 s of data to avoid wild early estimates.
+            if (elapsed >= 5000) {
+              const msPerFile = elapsed / p.scanned;
+              const remaining = (p.total - p.scanned) * msPerFile;
+              eta = ' · ' + fmtDuration(remaining) + ' remaining';
+            }
           }
+          counter.textContent = p.scanned.toLocaleString() + ' / ' + p.total.toLocaleString() + ' files' + eta;
         }
-
-        counter.textContent = p.scanned.toLocaleString() + ' / ' + p.total.toLocaleString() + ' files' + eta;
       }
     } else if (p.phase === 'matching') {
       title.textContent = 'Matching duplicates…';
@@ -289,14 +293,11 @@ function startProgress() {
 // ---- Selection & Actions ----
 
 function updateActionBar() {
-  const bar = $('action-bar');
   const n = selectedPaths.size;
-  if (n > 0) {
-    bar.style.display = 'flex';
-    $('sel-count').textContent = n + ' image' + (n === 1 ? '' : 's') + ' selected';
-  } else {
-    bar.style.display = 'none';
-  }
+  $('sel-count').textContent = n > 0
+    ? n + ' image' + (n === 1 ? '' : 's') + ' selected'
+    : 'No images selected';
+  $('btn-apply').disabled = n === 0;
 }
 
 function onFileCheckChange(e) {
@@ -420,6 +421,7 @@ async function loadResults() {
     console.error('loadResults failed:', err);
     showView('setup');
   }
+  updateActionBar();
 }
 
 function groupTotalSize(g) {
