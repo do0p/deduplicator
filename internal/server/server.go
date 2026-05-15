@@ -188,7 +188,7 @@ func (s *Server) handleTrash(w http.ResponseWriter, r *http.Request) {
 			failed = append(failed, failEntry{Path: p, Error: "forbidden"})
 			continue
 		}
-		dst, err := trashDest(s.recycleBin, sp)
+		dst, err := trashDest(s.recycleBin, s.mountRoot, sp)
 		if err != nil {
 			failed = append(failed, failEntry{Path: p, Error: err.Error()})
 			continue
@@ -203,20 +203,24 @@ func (s *Server) handleTrash(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"moved": moved, "failed": failed})
 }
 
-// trashDest returns a non-colliding destination path inside recycleBin for src.
-func trashDest(recycleBin, src string) (string, error) {
-	if err := os.MkdirAll(recycleBin, 0755); err != nil {
+// trashDest returns a non-colliding destination path inside recycleBin for src,
+// preserving the directory structure relative to mountRoot.
+func trashDest(recycleBin, mountRoot, src string) (string, error) {
+	rel, err := filepath.Rel(mountRoot, src)
+	if err != nil {
+		rel = filepath.Base(src)
+	}
+	dst := filepath.Join(recycleBin, rel)
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
 		return "", err
 	}
-	base := filepath.Base(src)
-	dst := filepath.Join(recycleBin, base)
 	if _, err := os.Lstat(dst); os.IsNotExist(err) {
 		return dst, nil
 	}
-	ext := filepath.Ext(base)
-	name := strings.TrimSuffix(base, ext)
+	ext := filepath.Ext(rel)
+	base := strings.TrimSuffix(rel, ext)
 	for i := 1; i < 1000; i++ {
-		candidate := filepath.Join(recycleBin, fmt.Sprintf("%s_%d%s", name, i, ext))
+		candidate := filepath.Join(recycleBin, fmt.Sprintf("%s_%d%s", base, i, ext))
 		if _, err := os.Lstat(candidate); os.IsNotExist(err) {
 			return candidate, nil
 		}
