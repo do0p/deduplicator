@@ -8,11 +8,9 @@ RUN VERSION=$(cat VERSION) && \
     go build -ldflags="-s -w -X main.version=${VERSION}" -o duplicates .
 
 FROM alpine:latest
-RUN apk add --no-cache ca-certificates && \
-    adduser -D -u 1000 app
+RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=builder /app/duplicates .
-USER app
 EXPOSE 8080
 ENV MOUNT_ROOT=/mnt
 ENV PORT=8080
