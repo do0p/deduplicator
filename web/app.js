@@ -13,7 +13,6 @@ let binItems = [];
 var selectedBinPaths = new Set();      // var so tests can read window.selectedBinPaths
 let acceptedItems = [];
 var selectedAcceptedPaths = new Set(); // var so tests can read window.selectedAcceptedPaths
-let previousView = 'setup';
 
 // ---- Utilities ----
 const $ = id => document.getElementById(id);
@@ -530,7 +529,9 @@ async function loadResults() {
   } catch (err) {
     console.error('loadResults failed:', err);
     showView('setup');
+    return;
   }
+  $('btn-go-results').disabled = false;
   updateActionBar();
 }
 
@@ -878,12 +879,20 @@ async function goToSetup() {
   selectedDirs.clear();
   clearSelection();
   $('btn-scan').disabled = true;
+  $('btn-go-results').disabled = true;
   showView('setup');
   await loadTree('', $('folder-tree'));
 }
 
-$('btn-new-scan').addEventListener('click', goToSetup);
-document.querySelector('header h1').addEventListener('click', goToSetup);
+$('btn-go-home').addEventListener('click', () => {
+  if (ws) showView('progress');
+  else goToSetup();
+});
+$('btn-go-results').addEventListener('click', () => showView('results'));
+document.querySelector('header h1').addEventListener('click', () => {
+  if (ws) showView('progress');
+  else goToSetup();
+});
 $('btn-abort').addEventListener('click', async () => {
   try { await fetch('/api/cancel', { method: 'POST' }); } catch (_) {}
   goToSetup();
@@ -1021,9 +1030,6 @@ async function doUnaccept(paths) {
 }
 
 async function openAcceptedView() {
-  const active = document.querySelector('.view.active');
-  previousView = active ? active.id.replace('view-', '') : 'setup';
-
   showView('accepted');
   $('accepted-loading').style.display = 'block';
   $('accepted-empty').style.display = 'none';
@@ -1040,11 +1046,6 @@ async function openAcceptedView() {
 }
 
 $('btn-open-accepted').addEventListener('click', openAcceptedView);
-
-$('btn-back-from-accepted').addEventListener('click', () => {
-  acceptedPreview.classList.remove('visible');
-  showView(previousView);
-});
 
 $('btn-accepted-clear-sel').addEventListener('click', clearAcceptedSelection);
 
@@ -1299,9 +1300,6 @@ async function doRestore(paths) {
 }
 
 async function openBinView() {
-  const active = document.querySelector('.view.active');
-  previousView = active ? active.id.replace('view-', '') : 'setup';
-
   showView('bin');
   $('bin-loading').style.display = 'block';
   $('bin-empty').style.display = 'none';
@@ -1318,11 +1316,6 @@ async function openBinView() {
 }
 
 $('btn-open-bin').addEventListener('click', openBinView);
-
-$('btn-back-from-bin').addEventListener('click', () => {
-  binPreview.classList.remove('visible');
-  showView(previousView);
-});
 
 $('btn-bin-clear-sel').addEventListener('click', clearBinSelection);
 

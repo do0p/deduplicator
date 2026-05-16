@@ -11,6 +11,8 @@
 <header>
   <h1>Find Duplicate Images</h1>
   <div class="header-nav">
+    <button class="btn btn-secondary btn-bin" id="btn-go-home">⌂ Home</button>
+    <button class="btn btn-secondary btn-bin" id="btn-go-results" disabled>Results</button>
     <button class="btn btn-secondary btn-bin" id="btn-open-accepted">✓ Accepted</button>
     <button class="btn btn-secondary btn-bin" id="btn-open-bin" style="display:none">🗑 Recycle Bin</button>
   </div>
@@ -47,11 +49,8 @@
 <!-- VIEW 3: Results -->
 <div id="view-results" class="view">
   <div class="results-header">
-    <div>
-      <h2>Duplicate groups</h2>
-      <div class="stats" id="stats"></div>
-    </div>
-    <button class="btn btn-secondary" id="btn-new-scan">New scan</button>
+    <h2>Duplicate groups</h2>
+    <div class="stats" id="stats"></div>
   </div>
 
   <div id="action-bar" class="action-bar">
@@ -98,11 +97,8 @@
 <!-- VIEW 4: Accepted -->
 <div id="view-accepted" class="view">
   <div class="results-header">
-    <div>
-      <h2>Accepted duplicates</h2>
-      <div class="stats" id="accepted-stats"></div>
-    </div>
-    <button class="btn btn-secondary" id="btn-back-from-accepted">← Back</button>
+    <h2>Accepted duplicates</h2>
+    <div class="stats" id="accepted-stats"></div>
   </div>
 
   <div id="accepted-action-bar" class="action-bar">
@@ -121,11 +117,8 @@
 <!-- VIEW 5: Recycle Bin -->
 <div id="view-bin" class="view">
   <div class="results-header">
-    <div>
-      <h2>Recycle Bin</h2>
-      <div class="stats" id="bin-stats"></div>
-    </div>
-    <button class="btn btn-secondary" id="btn-back-from-bin">← Back</button>
+    <h2>Recycle Bin</h2>
+    <div class="stats" id="bin-stats"></div>
   </div>
 
   <div id="bin-action-bar" class="action-bar">
