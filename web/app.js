@@ -42,6 +42,24 @@ function dirname(path) {
   return i > 0 ? path.substring(0, i) : path;
 }
 
+function trapFocus(container) {
+  const sel = 'button:not(:disabled), input:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])';
+  const getFocusable = () => [...container.querySelectorAll(sel)];
+  function handler(e) {
+    if (e.key !== 'Tab') return;
+    const els = getFocusable();
+    if (!els.length) return;
+    const first = els[0], last = els[els.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+    } else {
+      if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  }
+  container.addEventListener('keydown', handler);
+  return () => container.removeEventListener('keydown', handler);
+}
+
 function fmtDate(iso) {
   if (!iso) return '';
   try {
@@ -434,7 +452,9 @@ function removePathsFromResults(paths) {
   renderResults();
 }
 
-// Returns a Promise<boolean> — true if user confirmed, false if cancelled.
+let confirmTriggerEl = null;
+let confirmReleaseTrap = null;
+
 function showConfirm(title, desc, filenames) {
   return new Promise(resolve => {
     $('confirm-title').textContent = title;
@@ -446,10 +466,16 @@ function showConfirm(title, desc, filenames) {
       li.textContent = name;
       list.appendChild(li);
     });
+    confirmTriggerEl = document.activeElement;
     $('confirm-modal').classList.add('open');
+    if (confirmReleaseTrap) confirmReleaseTrap();
+    confirmReleaseTrap = trapFocus($('confirm-modal'));
+    $('confirm-cancel').focus();
 
     function finish(result) {
       $('confirm-modal').classList.remove('open');
+      if (confirmReleaseTrap) { confirmReleaseTrap(); confirmReleaseTrap = null; }
+      if (confirmTriggerEl) { confirmTriggerEl.focus(); confirmTriggerEl = null; }
       $('confirm-ok').removeEventListener('click', onOk);
       $('confirm-cancel').removeEventListener('click', onCancel);
       resolve(result);
@@ -583,6 +609,7 @@ function renderResults() {
   tbody.innerHTML = '';
   expandedRow = null;
 
+  $('action-bar').style.display = allGroups.length === 0 ? 'none' : '';
   if (groups.length === 0) {
     $('no-results').style.display = 'block';
     return;
@@ -722,6 +749,8 @@ let modalFileIndex = 0;
 let modalCurrentPath = '';
 let modalCheckCallback = null;
 let modalGetChecked = null;
+let modalTriggerEl = null;
+let modalReleaseTrap = null;
 
 function stopModalVideo() {
   const v = $('modal-video');
@@ -761,7 +790,12 @@ async function openModal(path, files = null, index = 0, checkCallback = null, ge
   if (hasCheck) $('modal-check').checked = getChecked ? getChecked(path) : false;
 
   $('modal-info').innerHTML = '<div class="mi-loading">Loading…</div>';
+  modalTriggerEl = document.activeElement;
   $('modal').classList.add('open');
+  if (modalReleaseTrap) modalReleaseTrap();
+  modalReleaseTrap = trapFocus($('modal-content'));
+  const firstFocusable = $('modal-content').querySelector('button:not(:disabled), input:not(:disabled)');
+  if (firstFocusable) firstFocusable.focus();
 
   try {
     const res = await fetch('/api/fileinfo?path=' + encodeURIComponent(path));
@@ -828,6 +862,8 @@ function renderModalInfo(info) {
 }
 
 function closeModal() {
+  if (modalReleaseTrap) { modalReleaseTrap(); modalReleaseTrap = null; }
+  if (modalTriggerEl) { modalTriggerEl.focus(); modalTriggerEl = null; }
   $('modal').classList.remove('open');
   stopModalVideo();
 }
