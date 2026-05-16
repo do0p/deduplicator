@@ -295,7 +295,9 @@ function fmtDuration(ms) {
   const m = Math.floor(s / 60);
   const rem = s % 60;
   if (m < 60) return '~' + m + 'm ' + rem + 's';
-  return '> 1h';
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return '~' + h + 'h ' + rm + 'm';
 }
 
 function startProgress() {
