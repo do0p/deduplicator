@@ -300,7 +300,6 @@ function fmtDuration(ms) {
 }
 
 function startProgress() {
-  $('btn-go-results').disabled = true;
   showView('progress');
 
   const bar = $('progress-bar');
@@ -531,10 +530,9 @@ async function loadResults() {
     showView('results');
   } catch (err) {
     console.error('loadResults failed:', err);
-    showView('setup');
+    showView('results');
     return;
   }
-  $('btn-go-results').disabled = false;
   updateActionBar();
 }
 
@@ -886,15 +884,12 @@ async function goToSetup() {
   await loadTree('', $('folder-tree'));
 }
 
-$('btn-go-home').addEventListener('click', () => {
+$('btn-go-scan').addEventListener('click', () => {
   if (ws) showView('progress');
   else goToSetup();
 });
 $('btn-go-results').addEventListener('click', () => showView('results'));
-document.querySelector('header h1').addEventListener('click', () => {
-  if (ws) showView('progress');
-  else goToSetup();
-});
+document.querySelector('header h1').addEventListener('click', () => showView('results'));
 $('btn-abort').addEventListener('click', async () => {
   try { await fetch('/api/cancel', { method: 'POST' }); } catch (_) {}
   goToSetup();
@@ -1366,6 +1361,7 @@ $('btn-restore').addEventListener('click', async () => {
     console.error('init status check failed:', err);
   }
 
-  // Default: load folder tree for setup view
-  await loadTree('', $('folder-tree'));
+  // Default: show results page (empty state until first scan)
+  showView('results');
+  renderResults();
 })();

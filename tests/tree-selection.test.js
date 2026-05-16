@@ -93,6 +93,13 @@ async function createApp(fetchExtras = {}) {
   return win;
 }
 
+async function createFolderApp() {
+  const win = await createApp();
+  await win.goToSetup();
+  await new Promise(r => setTimeout(r, 50));
+  return win;
+}
+
 async function createBinApp() {
   const win = await createApp({ '/api/bin': BIN_ITEMS });
   await win.openBinView();
@@ -191,13 +198,13 @@ function acceptedDirCbFor(win, name) {
 describe('folder tree — selectedDirs matches visual state', () => {
 
   test('initial state: nothing selected', async () => {
-    const win = await createApp();
+    const win = await createFolderApp();
     assertConsistent(win);
     assert.equal(win.selectedDirs.size, 0);
   });
 
   test('check root selects root + all visible top-level folders', async () => {
-    const win = await createApp();
+    const win = await createFolderApp();
     click(cbFor(win, '/mnt'));
     assertConsistent(win);
     assert.ok(win.selectedDirs.has('/mnt'));
@@ -206,7 +213,7 @@ describe('folder tree — selectedDirs matches visual state', () => {
   });
 
   test('uncheck one child: parent indeterminate, sibling stays checked', async () => {
-    const win = await createApp();
+    const win = await createFolderApp();
     click(cbFor(win, '/mnt'));           // select all
     click(cbFor(win, '/mnt/Videos'));    // deselect Videos
 
@@ -218,7 +225,7 @@ describe('folder tree — selectedDirs matches visual state', () => {
   });
 
   test('clicking indeterminate root clears everything', async () => {
-    const win = await createApp();
+    const win = await createFolderApp();
     click(cbFor(win, '/mnt'));
     click(cbFor(win, '/mnt/Videos'));    // root → indeterminate
     click(cbFor(win, '/mnt'));           // click indeterminate root
@@ -231,7 +238,7 @@ describe('folder tree — selectedDirs matches visual state', () => {
   });
 
   test('clicking checked root clears everything', async () => {
-    const win = await createApp();
+    const win = await createFolderApp();
     click(cbFor(win, '/mnt'));   // select all
     click(cbFor(win, '/mnt'));   // deselect all
     assertConsistent(win);
@@ -239,7 +246,7 @@ describe('folder tree — selectedDirs matches visual state', () => {
   });
 
   test('deselect all children then reselect parent', async () => {
-    const win = await createApp();
+    const win = await createFolderApp();
     click(cbFor(win, '/mnt'));
     click(cbFor(win, '/mnt/Videos'));    // indeterminate root
     click(cbFor(win, '/mnt/Photos'));    // → nothing selected
@@ -251,7 +258,7 @@ describe('folder tree — selectedDirs matches visual state', () => {
   });
 
   test('nested: subfolders default to checked when parent was checked on expand', async () => {
-    const win = await createApp();
+    const win = await createFolderApp();
     click(cbFor(win, '/mnt/Photos'));
     await expand(win, '/mnt/Photos');
 
@@ -261,7 +268,7 @@ describe('folder tree — selectedDirs matches visual state', () => {
   });
 
   test('nested: uncheck subfolder makes parent indeterminate', async () => {
-    const win = await createApp();
+    const win = await createFolderApp();
     click(cbFor(win, '/mnt/Photos'));
     await expand(win, '/mnt/Photos');
     click(cbFor(win, '/mnt/Photos/2023'));    // deselect 2023
@@ -274,7 +281,7 @@ describe('folder tree — selectedDirs matches visual state', () => {
   });
 
   test('nested: deselect all subfolders makes parent unchecked, not indeterminate', async () => {
-    const win = await createApp();
+    const win = await createFolderApp();
     click(cbFor(win, '/mnt/Photos'));
     await expand(win, '/mnt/Photos');
     click(cbFor(win, '/mnt/Photos/2023'));
@@ -287,7 +294,7 @@ describe('folder tree — selectedDirs matches visual state', () => {
   });
 
   test('nested: clicking indeterminate parent clears its subfolders', async () => {
-    const win = await createApp();
+    const win = await createFolderApp();
     click(cbFor(win, '/mnt/Photos'));
     await expand(win, '/mnt/Photos');
     click(cbFor(win, '/mnt/Photos/2023'));    // Photos → indeterminate
@@ -300,7 +307,7 @@ describe('folder tree — selectedDirs matches visual state', () => {
   });
 
   test('root reflects partial state when only some top-level folders selected', async () => {
-    const win = await createApp();
+    const win = await createFolderApp();
     click(cbFor(win, '/mnt/Photos'));    // select only Photos (no root click)
 
     assert.equal(cbFor(win, '/mnt').indeterminate, true);    // root IS indeterminate — Photos checked, Videos not
@@ -314,7 +321,7 @@ describe('folder tree — selectedDirs matches visual state', () => {
   });
 
   test('assertConsistent holds after every step of a complex interaction', async () => {
-    const win = await createApp();
+    const win = await createFolderApp();
 
     click(cbFor(win, '/mnt'));                   assertConsistent(win);
     await expand(win, '/mnt/Photos');            assertConsistent(win);
