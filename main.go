@@ -49,7 +49,7 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	srv := server.New(mountRoot, version, accepted, recycleBin, pHashCache, http.FileServer(http.FS(subFS)))
+	srv := server.New(mountRoot, version, accepted, recycleBin, pHashCache, dataDir, http.FileServer(http.FS(subFS)))
 	srv.RegisterRoutes(mux)
 
 	log.Printf("listening on :%s  mount=%s", port, mountRoot)

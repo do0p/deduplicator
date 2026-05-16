@@ -40,11 +40,17 @@ type Server struct {
 	accepted   *store.AcceptedStore
 	recycleBin string
 	pHashCache *phashcache.Cache
+	dataDir    string
 	state      scanState
 	subs       subscribers
 	fs         http.Handler
 	cancelScan context.CancelFunc
 	cancelMu   sync.Mutex
+}
+
+type persistedScan struct {
+	Records   []scanner.FileRecord `json:"records"`
+	Threshold int                  `json:"threshold"`
 }
 
 type scanState struct {
@@ -108,14 +114,56 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-func New(mountRoot, version string, accepted *store.AcceptedStore, recycleBin string, cache *phashcache.Cache, webFS http.Handler) *Server {
-	return &Server{
+func New(mountRoot, version string, accepted *store.AcceptedStore, recycleBin string, cache *phashcache.Cache, dataDir string, webFS http.Handler) *Server {
+	s := &Server{
 		mountRoot:  mountRoot,
 		version:    version,
 		accepted:   accepted,
 		recycleBin: recycleBin,
 		pHashCache: cache,
+		dataDir:    dataDir,
 		fs:         webFS,
+	}
+	s.tryLoadLastScan()
+	return s
+}
+
+func (s *Server) tryLoadLastScan() {
+	if s.dataDir == "" {
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(s.dataDir, "last_scan.json"))
+	if err != nil {
+		return
+	}
+	var saved persistedScan
+	if err := json.Unmarshal(data, &saved); err != nil {
+		log.Printf("last_scan.json parse error: %v", err)
+		return
+	}
+	groups := matcher.FindDuplicates(saved.Records, saved.Threshold)
+	s.state.records = saved.Records
+	s.state.results = groups
+	s.state.phase = "done"
+	s.state.scanned = len(saved.Records)
+	s.state.total = len(saved.Records)
+	log.Printf("loaded last scan: %d records, %d groups (threshold=%d)", len(saved.Records), len(groups), saved.Threshold)
+}
+
+func (s *Server) saveLastScan(threshold int) {
+	if s.dataDir == "" {
+		return
+	}
+	s.state.mu.RLock()
+	records := s.state.records
+	s.state.mu.RUnlock()
+	data, err := json.Marshal(persistedScan{Records: records, Threshold: threshold})
+	if err != nil {
+		log.Printf("last_scan marshal error: %v", err)
+		return
+	}
+	if err := os.WriteFile(filepath.Join(s.dataDir, "last_scan.json"), data, 0644); err != nil {
+		log.Printf("last_scan write error: %v", err)
 	}
 }
 
@@ -623,6 +671,8 @@ func (s *Server) runScan(dirs []string, patterns []*regexp.Regexp, threshold int
 	s.state.mu.Lock()
 	s.state.results = groups
 	s.state.mu.Unlock()
+
+	s.saveLastScan(threshold)
 
 	doneProgress := scanner.Progress{Phase: "done", Scanned: len(records), Total: len(records)}
 	progress <- doneProgress

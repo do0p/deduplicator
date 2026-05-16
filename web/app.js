@@ -365,11 +365,13 @@ function startProgress() {
       localStorage.removeItem('hashStartTime');
       closedIntentionally = true;
       ws.close();
+      ws = null;
       loadResults();
     } else if (p.phase === 'cancelled') {
       localStorage.removeItem('hashStartTime');
       closedIntentionally = true;
       ws.close();
+      ws = null;
       // goToSetup() will be called by the cancel button click handler.
     } else if (p.phase === 'error') {
       localStorage.removeItem('hashStartTime');
