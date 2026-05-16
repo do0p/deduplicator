@@ -10,9 +10,9 @@ let selectedPaths = new Set();
 let recycleBinEnabled = false;
 let exactOnly = false;
 let binItems = [];
-let selectedBinPaths = new Set();
+var selectedBinPaths = new Set();      // var so tests can read window.selectedBinPaths
 let acceptedItems = [];
-let selectedAcceptedPaths = new Set();
+var selectedAcceptedPaths = new Set(); // var so tests can read window.selectedAcceptedPaths
 let previousView = 'setup';
 
 // ---- Utilities ----
@@ -1129,6 +1129,7 @@ function renderTreeNode(node, depth, renderFileFn, onCascade) {
     const dirCb = document.createElement('input');
     dirCb.type = 'checkbox';
     dirCb.className = 'dir-cb';
+    dirCb.dataset.name = name;
     let _preInd = false;
     dirCb.addEventListener('mousedown', () => { _preInd = dirCb.indeterminate; });
     dirCb.addEventListener('keydown', e => { if (e.key === ' ') _preInd = dirCb.indeterminate; });
