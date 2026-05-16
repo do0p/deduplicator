@@ -647,7 +647,7 @@ function toggleDetail(tr, g) {
   selAllLabel.append(selAllCb, ' Select all in group');
   inner.appendChild(selAllLabel);
 
-  g.files.forEach(f => {
+  g.files.forEach((f, idx) => {
     const card = document.createElement('div');
     card.className = 'file-card';
 
@@ -675,7 +675,7 @@ function toggleDetail(tr, g) {
     }
     thumb.addEventListener('click', ev => {
       ev.stopPropagation();
-      openModal(f.path);
+      openModal(f.path, g.files, idx);
     });
 
     const nameEl = document.createElement('div');
@@ -709,13 +709,20 @@ function toggleDetail(tr, g) {
 const tbody = document.getElementById('results-body');
 
 // ---- Modal ----
+let modalFiles = [];
+let modalFileIndex = 0;
+
 function stopModalVideo() {
   const v = $('modal-video');
   v.pause();
   v.src = '';
 }
 
-async function openModal(path) {
+async function openModal(path, files = null, index = 0) {
+  stopModalVideo();
+  modalFiles = files || [];
+  modalFileIndex = index;
+
   const url = '/api/image?path=' + encodeURIComponent(path);
   if (isVideo(path)) {
     $('modal-img').style.display = 'none';
@@ -726,6 +733,15 @@ async function openModal(path) {
     $('modal-video').style.display = 'none';
     $('modal-img').src = url;
   }
+
+  const hasNav = modalFiles.length > 1;
+  $('modal-nav').style.display = hasNav ? '' : 'none';
+  if (hasNav) {
+    $('modal-prev').disabled = modalFileIndex === 0;
+    $('modal-next').disabled = modalFileIndex === modalFiles.length - 1;
+    $('modal-nav-count').textContent = (modalFileIndex + 1) + ' / ' + modalFiles.length;
+  }
+
   $('modal-info').innerHTML = '<div class="mi-loading">Loading…</div>';
   $('modal').classList.add('open');
 
@@ -799,10 +815,19 @@ function closeModal() {
 }
 $('modal-close').addEventListener('click', closeModal);
 $('modal').addEventListener('click', e => { if (e.target === $('modal')) closeModal(); });
+$('modal-prev').addEventListener('click', () => {
+  if (modalFileIndex > 0) openModal(modalFiles[--modalFileIndex].path, modalFiles, modalFileIndex);
+});
+$('modal-next').addEventListener('click', () => {
+  if (modalFileIndex < modalFiles.length - 1) openModal(modalFiles[++modalFileIndex].path, modalFiles, modalFileIndex);
+});
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    if ($('modal').classList.contains('open')) closeModal();
-  }
+  if (!$('modal').classList.contains('open')) return;
+  if (e.key === 'Escape') closeModal();
+  else if (e.key === 'ArrowLeft' && modalFileIndex > 0)
+    openModal(modalFiles[--modalFileIndex].path, modalFiles, modalFileIndex);
+  else if (e.key === 'ArrowRight' && modalFileIndex < modalFiles.length - 1)
+    openModal(modalFiles[++modalFileIndex].path, modalFiles, modalFileIndex);
 });
 
 // ---- Sorting ----

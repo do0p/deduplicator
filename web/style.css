@@ -312,6 +312,7 @@ tbody td { padding: 0.55rem 0.75rem; vertical-align: middle; }
 .modal-content {
   position: relative;
   display: flex;
+  flex-direction: column;
   background: #1a1d27;
   border-radius: 12px;
   max-width: min(1200px, calc(100vw - 4rem));
@@ -319,6 +320,18 @@ tbody td { padding: 0.55rem 0.75rem; vertical-align: middle; }
   width: 100%;
   overflow: hidden;
 }
+
+.modal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0.55rem 1rem;
+  border-top: 1px solid #2d3148;
+  flex-shrink: 0;
+}
+.modal-nav-btn { font-size: 0.82rem; padding: 0.3rem 0.9rem; }
+.modal-nav-count { color: #94a3b8; font-size: 0.85rem; min-width: 3.5rem; text-align: center; }
 
 .modal-body {
   display: flex;
