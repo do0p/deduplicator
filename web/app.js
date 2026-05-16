@@ -1065,7 +1065,7 @@ function renderAcceptedFileRow(item, depth) {
 
   row.append(cb, nameEl, sizeEl, dateEl, revertBtn);
 
-  if (!item.missing && !isVideo(item.path)) {
+  if (!item.missing && !isVideo(item.path) && window.matchMedia('(hover: hover)').matches) {
     row.addEventListener('mouseenter', () => {
       acceptedPreviewImg.src = '/api/image?path=' + encodeURIComponent(item.path);
       acceptedPreview.classList.add('visible');
@@ -1341,7 +1341,7 @@ function renderBinFileRow(item, depth) {
 
   row.append(cb, nameEl, sizeEl, dateEl, restoreBtn);
 
-  if (!isVideo(item.path)) {
+  if (!isVideo(item.path) && window.matchMedia('(hover: hover)').matches) {
     row.addEventListener('mouseenter', () => {
       binPreviewImg.src = '/api/image?path=' + encodeURIComponent(item.path);
       binPreview.classList.add('visible');

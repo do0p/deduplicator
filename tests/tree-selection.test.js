@@ -82,6 +82,7 @@ async function createApp(fetchExtras = {}) {
   const win = dom.window;
   win.fetch = makeFetch(fetchExtras);
   win.WebSocket = class { constructor() {} close() {} };
+  win.matchMedia = () => ({ matches: false });
 
   // Strip 'use strict' so that top-level var declarations (selectedDirs,
   // selectedBinPaths, selectedAcceptedPaths) become window properties —

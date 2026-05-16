@@ -589,6 +589,67 @@ footer {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #2d3148; border-radius: 3px; }
 
+/* ---- mobile ---- */
+@media (max-width: 640px) {
+  header {
+    padding: 0.6rem 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  header h1 { font-size: 1.05rem; }
+  .header-nav { gap: 0.35rem; flex-wrap: wrap; }
+  .btn-bin { padding: 0.3rem 0.55rem; font-size: 0.75rem; }
+
+  .view { padding: 0.75rem; }
+
+  /* results table: tighter cells */
+  #results-table th,
+  #results-table td { padding: 0.45rem 0.5rem; font-size: 0.8rem; }
+
+  /* filter / threshold rows */
+  .filter-row { flex-direction: column; align-items: stretch; gap: 0.5rem; }
+  .threshold-filter-row { padding: 0.5rem 0; }
+
+  /* action bar */
+  .action-bar { flex-wrap: wrap; gap: 0.4rem; }
+  .action-bar-right { flex-wrap: wrap; gap: 0.4rem; }
+
+  /* image modal: bottom-sheet layout */
+  #modal { align-items: flex-end; padding: 0; }
+  /* confirm modal: stays centered with reduced padding */
+  #confirm-modal { padding: 1rem; }
+  .modal-content {
+    max-height: 92dvh;
+    border-radius: 14px 14px 0 0;
+    width: 100%;
+    max-width: 100%;
+  }
+  .modal-body { flex-direction: column; }
+  .modal-img-wrap {
+    width: 100%;
+    max-height: 45dvh;
+    border-right: none;
+    border-bottom: 1px solid #2d3148;
+  }
+  #modal-img, #modal-video { max-height: 45dvh; width: 100%; object-fit: contain; }
+  .modal-info {
+    width: 100%;
+    max-height: 30dvh;
+    overflow-y: auto;
+    border-left: none;
+    border-top: 1px solid #2d3148;
+  }
+
+  /* bin / accepted rows: hide date to save space */
+  .bf-date { display: none; }
+
+  /* file cards: smaller thumbnails */
+  .file-card img,
+  .file-card video { width: 120px; height: 90px; }
+
+  footer { padding: 0.5rem 0.75rem; font-size: 0.75rem; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
