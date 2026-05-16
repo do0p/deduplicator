@@ -324,11 +324,24 @@ tbody td { padding: 0.55rem 0.75rem; vertical-align: middle; }
 .modal-nav {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 1rem;
+  justify-content: space-between;
   padding: 0.55rem 1rem;
   border-top: 1px solid #2d3148;
   flex-shrink: 0;
+}
+.modal-check-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #94a3b8;
+  font-size: 0.85rem;
+  cursor: pointer;
+  user-select: none;
+}
+#modal-nav-btns {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
 }
 .modal-nav-btn { font-size: 0.82rem; padding: 0.3rem 0.9rem; }
 .modal-nav-count { color: #94a3b8; font-size: 0.85rem; min-width: 3.5rem; text-align: center; }

@@ -675,7 +675,15 @@ function toggleDetail(tr, g) {
     }
     thumb.addEventListener('click', ev => {
       ev.stopPropagation();
-      openModal(f.path, g.files, idx);
+      openModal(f.path, g.files, idx,
+        (p, checked) => {
+          if (checked) selectedPaths.add(p); else selectedPaths.delete(p);
+          const mainCb = [...document.querySelectorAll('.fc-check')].find(c => c.dataset.path === p);
+          if (mainCb) mainCb.checked = checked;
+          updateActionBar();
+        },
+        p => selectedPaths.has(p)
+      );
     });
 
     const nameEl = document.createElement('div');
@@ -711,6 +719,9 @@ const tbody = document.getElementById('results-body');
 // ---- Modal ----
 let modalFiles = [];
 let modalFileIndex = 0;
+let modalCurrentPath = '';
+let modalCheckCallback = null;
+let modalGetChecked = null;
 
 function stopModalVideo() {
   const v = $('modal-video');
@@ -718,10 +729,13 @@ function stopModalVideo() {
   v.src = '';
 }
 
-async function openModal(path, files = null, index = 0) {
+async function openModal(path, files = null, index = 0, checkCallback = null, getChecked = null) {
   stopModalVideo();
   modalFiles = files || [];
   modalFileIndex = index;
+  modalCurrentPath = path;
+  modalCheckCallback = checkCallback || null;
+  modalGetChecked = getChecked || null;
 
   const url = '/api/image?path=' + encodeURIComponent(path);
   if (isVideo(path)) {
@@ -735,12 +749,16 @@ async function openModal(path, files = null, index = 0) {
   }
 
   const hasNav = modalFiles.length > 1;
-  $('modal-nav').style.display = hasNav ? '' : 'none';
+  const hasCheck = !!checkCallback;
+  $('modal-nav').style.display = (hasNav || hasCheck) ? '' : 'none';
+  $('modal-nav-btns').style.display = hasNav ? '' : 'none';
   if (hasNav) {
     $('modal-prev').disabled = modalFileIndex === 0;
     $('modal-next').disabled = modalFileIndex === modalFiles.length - 1;
     $('modal-nav-count').textContent = (modalFileIndex + 1) + ' / ' + modalFiles.length;
   }
+  $('modal-check-wrap').style.display = hasCheck ? '' : 'none';
+  if (hasCheck) $('modal-check').checked = getChecked ? getChecked(path) : false;
 
   $('modal-info').innerHTML = '<div class="mi-loading">Loading…</div>';
   $('modal').classList.add('open');
@@ -816,18 +834,21 @@ function closeModal() {
 $('modal-close').addEventListener('click', closeModal);
 $('modal').addEventListener('click', e => { if (e.target === $('modal')) closeModal(); });
 $('modal-prev').addEventListener('click', () => {
-  if (modalFileIndex > 0) openModal(modalFiles[--modalFileIndex].path, modalFiles, modalFileIndex);
+  if (modalFileIndex > 0) openModal(modalFiles[--modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked);
 });
 $('modal-next').addEventListener('click', () => {
-  if (modalFileIndex < modalFiles.length - 1) openModal(modalFiles[++modalFileIndex].path, modalFiles, modalFileIndex);
+  if (modalFileIndex < modalFiles.length - 1) openModal(modalFiles[++modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked);
+});
+$('modal-check').addEventListener('change', e => {
+  if (modalCheckCallback) modalCheckCallback(modalCurrentPath, e.target.checked);
 });
 document.addEventListener('keydown', e => {
   if (!$('modal').classList.contains('open')) return;
   if (e.key === 'Escape') closeModal();
   else if (e.key === 'ArrowLeft' && modalFileIndex > 0)
-    openModal(modalFiles[--modalFileIndex].path, modalFiles, modalFileIndex);
+    openModal(modalFiles[--modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked);
   else if (e.key === 'ArrowRight' && modalFileIndex < modalFiles.length - 1)
-    openModal(modalFiles[++modalFileIndex].path, modalFiles, modalFileIndex);
+    openModal(modalFiles[++modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked);
 });
 
 // ---- Sorting ----
@@ -974,7 +995,19 @@ function renderAcceptedFileRow(item, depth) {
   nameEl.className = 'bf-name';
   nameEl.textContent = item.name;
   nameEl.title = item.path;
-  if (!item.missing) nameEl.addEventListener('click', () => openModal(item.path));
+  if (!item.missing) nameEl.addEventListener('click', () => {
+    const navigable = acceptedItems.filter(i => !i.missing);
+    const idx = navigable.findIndex(i => i.path === item.path);
+    openModal(item.path, navigable, idx,
+      (p, checked) => {
+        if (checked) selectedAcceptedPaths.add(p); else selectedAcceptedPaths.delete(p);
+        const mainCb = [...document.querySelectorAll('.ac-check')].find(c => c.dataset.path === p);
+        if (mainCb) { mainCb.checked = checked; updateAncestorDirCheckboxes(mainCb); }
+        updateAcceptedActionBar();
+      },
+      p => selectedAcceptedPaths.has(p)
+    );
+  });
 
   const sizeEl = document.createElement('span');
   sizeEl.className = 'bf-size';
@@ -1239,7 +1272,18 @@ function renderBinFileRow(item, depth) {
   nameEl.className = 'bf-name';
   nameEl.textContent = item.name;
   nameEl.title = item.path;
-  nameEl.addEventListener('click', () => openModal(item.path));
+  nameEl.addEventListener('click', () => {
+    const idx = binItems.findIndex(i => i.path === item.path);
+    openModal(item.path, binItems, idx,
+      (p, checked) => {
+        if (checked) selectedBinPaths.add(p); else selectedBinPaths.delete(p);
+        const mainCb = [...document.querySelectorAll('.bc-check')].find(c => c.dataset.path === p);
+        if (mainCb) { mainCb.checked = checked; updateAncestorDirCheckboxes(mainCb); }
+        updateBinActionBar();
+      },
+      p => selectedBinPaths.has(p)
+    );
+  });
 
   const sizeEl = document.createElement('span');
   sizeEl.className = 'bf-size';

@@ -159,9 +159,14 @@
       <div class="modal-info" id="modal-info"></div>
     </div>
     <div class="modal-nav" id="modal-nav" style="display:none">
-      <button class="btn btn-secondary modal-nav-btn" id="modal-prev">← Prev</button>
-      <span class="modal-nav-count" id="modal-nav-count"></span>
-      <button class="btn btn-secondary modal-nav-btn" id="modal-next">Next →</button>
+      <label class="modal-check-label" id="modal-check-wrap" style="display:none">
+        <input type="checkbox" id="modal-check"> Select
+      </label>
+      <div id="modal-nav-btns" style="display:none">
+        <button class="btn btn-secondary modal-nav-btn" id="modal-prev">← Prev</button>
+        <span class="modal-nav-count" id="modal-nav-count"></span>
+        <button class="btn btn-secondary modal-nav-btn" id="modal-next">Next →</button>
+      </div>
     </div>
   </div>
 </div>
