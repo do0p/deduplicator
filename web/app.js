@@ -1,7 +1,7 @@
 'use strict';
 
 // ---- State ----
-let selectedDirs = new Set();
+var selectedDirs = new Set(); // var so tests can read window.selectedDirs
 let allGroups = [];
 let sortCol = 'size';
 let sortAsc = false;
@@ -69,6 +69,7 @@ function fmtExifDate(s) {
 function setSubtreeChecked(container, checked) {
   container.querySelectorAll('input[type=checkbox][data-path]').forEach(cb => {
     cb.checked = checked;
+    cb.indeterminate = false;
     if (checked) selectedDirs.add(cb.dataset.path);
     else selectedDirs.delete(cb.dataset.path);
   });
@@ -93,9 +94,12 @@ async function loadTree(path, container, depth = 0, parentCb = null) {
       cb.type = 'checkbox';
       cb.dataset.path = rootPath;
       cb.title = 'Select all folders';
-      cb.addEventListener('change', () => {
-        // Cascade checked state to all visible children in the tree.
-        setSubtreeChecked($('folder-tree'), cb.checked);
+      cb.addEventListener('click', (e) => {
+        e.preventDefault();
+        const next = !(cb.checked || cb.indeterminate);
+        cb.checked = next;
+        cb.indeterminate = false;
+        setSubtreeChecked($('folder-tree'), next);
         $('btn-scan').disabled = selectedDirs.size === 0;
       });
 
@@ -135,22 +139,30 @@ async function loadTree(path, container, depth = 0, parentCb = null) {
     cb.type = 'checkbox';
     cb.dataset.path = e.path;
 
-    // If the parent is already checked, start this node checked too.
-    if (parentCb && parentCb.checked) {
+    // If the parent is checked or partially checked, start this node checked too.
+    if (parentCb && (parentCb.checked || parentCb.indeterminate)) {
       cb.checked = true;
       selectedDirs.add(e.path);
       $('btn-scan').disabled = false;
     }
 
+    cb._parentCb = parentCb || null;
+
     const children = document.createElement('div');
     children.className = 'tree-children';
     children.style.display = 'none';
 
-    cb.addEventListener('change', () => {
-      if (cb.checked) selectedDirs.add(e.path);
+    cb._childrenContainer = children;
+
+    cb.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      const next = !(cb.checked || cb.indeterminate);
+      cb.checked = next;
+      cb.indeterminate = false;
+      if (next) selectedDirs.add(e.path);
       else selectedDirs.delete(e.path);
-      // Cascade to all currently visible descendants.
-      setSubtreeChecked(children, cb.checked);
+      setSubtreeChecked(children, next);
+      updateFolderAncestors(cb);
       $('btn-scan').disabled = selectedDirs.size === 0;
     });
 
@@ -191,6 +203,84 @@ async function loadTree(path, container, depth = 0, parentCb = null) {
 
   if (!entries || entries.length === 0) {
     container.innerHTML = '<div style="color:#64748b;font-size:0.8rem;padding:0.25rem 0.5rem">Empty</div>';
+  }
+}
+
+// ---- Tree indeterminate helpers ----
+
+function updateFolderAncestors(cb) {
+  const parentCb = cb._parentCb;
+  if (!parentCb) {
+    updateRootCheckbox();
+    return;
+  }
+  const childrenContainer = parentCb._childrenContainer;
+  if (!childrenContainer) return;
+
+  const childCbs = [...childrenContainer.querySelectorAll('input[type=checkbox][data-path]')];
+  if (childCbs.length === 0) return;
+
+  const allChecked = childCbs.every(c => c.checked && !c.indeterminate);
+  const anyChecked = childCbs.some(c => c.checked || c.indeterminate);
+
+  if (allChecked) {
+    parentCb.checked = true;
+    parentCb.indeterminate = false;
+    selectedDirs.add(parentCb.dataset.path);
+  } else if (anyChecked) {
+    parentCb.checked = false;
+    parentCb.indeterminate = true;
+    selectedDirs.delete(parentCb.dataset.path);
+  } else {
+    parentCb.checked = false;
+    parentCb.indeterminate = false;
+    selectedDirs.delete(parentCb.dataset.path);
+  }
+
+  updateFolderAncestors(parentCb);
+  $('btn-scan').disabled = selectedDirs.size === 0;
+}
+
+function updateRootCheckbox() {
+  const rootCb = $('folder-tree').querySelector('.tree-root input[type=checkbox]');
+  if (!rootCb) return;
+  const allCbs = [...$('folder-tree').querySelectorAll('input[type=checkbox][data-path]')]
+    .filter(c => !c.closest('.tree-root'));
+  if (allCbs.length === 0) return;
+  const allChecked = allCbs.every(c => c.checked && !c.indeterminate);
+  const anyChecked = allCbs.some(c => c.checked || c.indeterminate);
+  rootCb.checked = allChecked;
+  rootCb.indeterminate = !allChecked && anyChecked;
+  if (allChecked) selectedDirs.add(rootCb.dataset.path);
+  else selectedDirs.delete(rootCb.dataset.path);
+}
+
+// Updates a single dir checkbox state based on its body's leaf checkboxes.
+function updateDirCheckboxState(dirCb, body) {
+  const leafCbs = [...body.querySelectorAll('input[type=checkbox]:not(.dir-cb)')];
+  if (leafCbs.length === 0) { dirCb.checked = false; dirCb.indeterminate = false; return; }
+  const checkedCount = leafCbs.filter(c => c.checked).length;
+  if (checkedCount === leafCbs.length) {
+    dirCb.checked = true; dirCb.indeterminate = false;
+  } else if (checkedCount === 0) {
+    dirCb.checked = false; dirCb.indeterminate = false;
+  } else {
+    dirCb.checked = false; dirCb.indeterminate = true;
+  }
+}
+
+// Walks up the DOM from startElement and updates all ancestor dir checkboxes.
+function updateAncestorDirCheckboxes(startElement) {
+  let node = startElement.parentElement;
+  while (node) {
+    if (node.classList.contains('bin-dir-body')) {
+      const hd = node.previousElementSibling;
+      if (hd && hd.classList.contains('bin-dir-hd')) {
+        const dirCb = hd.querySelector('.dir-cb');
+        if (dirCb) updateDirCheckboxState(dirCb, node);
+      }
+    }
+    node = node.parentElement;
   }
 }
 
@@ -451,8 +541,8 @@ function groupWasted(g) {
 }
 
 function isExactGroup(g) {
-  const h = g.files[0]?.hash;
-  return g.files.every(f => f.hash === h);
+  const h = g.files[0]?.contentHash;
+  return !!h && g.files.every(f => f.contentHash === h);
 }
 
 function renderResults() {
@@ -726,9 +816,25 @@ document.querySelectorAll('thead th[data-col]').forEach(th => {
 $('filter-input').addEventListener('input', renderResults);
 $('exact-only').addEventListener('change', e => { exactOnly = e.target.checked; renderResults(); });
 
-// ---- Threshold slider ----
+// ---- Threshold slider (results page) ----
+let rematchTimeout = null;
+
 $('threshold').addEventListener('input', () => {
   $('threshold-val').textContent = $('threshold').value;
+  clearTimeout(rematchTimeout);
+  rematchTimeout = setTimeout(async () => {
+    const threshold = parseInt($('threshold').value, 10);
+    try {
+      const res = await fetch('/api/rematch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ threshold }),
+      });
+      if (res.ok) await loadResults();
+    } catch (err) {
+      console.error('rematch failed:', err);
+    }
+  }, 300);
 });
 
 // ---- Start scan ----
@@ -808,7 +914,7 @@ function updateAcceptedActionBar() {
 
 function clearAcceptedSelection() {
   selectedAcceptedPaths.clear();
-  $('accepted-tree').querySelectorAll('.ac-check, .dir-cb').forEach(cb => { cb.checked = false; });
+  $('accepted-tree').querySelectorAll('.ac-check, .dir-cb').forEach(cb => { cb.checked = false; cb.indeterminate = false; });
   updateAcceptedActionBar();
 }
 
@@ -826,6 +932,7 @@ function renderAcceptedFileRow(item, depth) {
     if (e.target.checked) selectedAcceptedPaths.add(item.path);
     else selectedAcceptedPaths.delete(item.path);
     updateAcceptedActionBar();
+    updateAncestorDirCheckboxes(cb);
   });
 
   const nameEl = document.createElement('span');
@@ -977,7 +1084,7 @@ function updateBinActionBar() {
 
 function clearBinSelection() {
   selectedBinPaths.clear();
-  $('bin-tree').querySelectorAll('.bc-check, .dir-cb').forEach(cb => { cb.checked = false; });
+  $('bin-tree').querySelectorAll('.bc-check, .dir-cb').forEach(cb => { cb.checked = false; cb.indeterminate = false; });
   updateBinActionBar();
 }
 
@@ -1020,8 +1127,15 @@ function renderTreeNode(node, depth, renderFileFn, onCascade) {
     const dirCb = document.createElement('input');
     dirCb.type = 'checkbox';
     dirCb.className = 'dir-cb';
-    dirCb.addEventListener('click', e => e.stopPropagation());
-    dirCb.addEventListener('change', () => onCascade(body, dirCb.checked));
+    dirCb.addEventListener('click', e => {
+      e.stopPropagation();
+      e.preventDefault();
+      const next = !(dirCb.checked || dirCb.indeterminate);
+      dirCb.checked = next;
+      dirCb.indeterminate = false;
+      onCascade(body, next);
+      updateAncestorDirCheckboxes(body);
+    });
 
     const icon = document.createElement('span');
     icon.className = 'icon';
@@ -1059,8 +1173,9 @@ function cascadeBin(body, checked) {
     if (checked) selectedBinPaths.add(cb.dataset.path);
     else selectedBinPaths.delete(cb.dataset.path);
   });
-  body.querySelectorAll('.dir-cb').forEach(cb => { cb.checked = checked; });
+  body.querySelectorAll('.dir-cb').forEach(cb => { cb.checked = checked; cb.indeterminate = false; });
   updateBinActionBar();
+  updateAncestorDirCheckboxes(body);
 }
 
 function cascadeAccepted(body, checked) {
@@ -1069,8 +1184,9 @@ function cascadeAccepted(body, checked) {
     if (checked) selectedAcceptedPaths.add(cb.dataset.path);
     else selectedAcceptedPaths.delete(cb.dataset.path);
   });
-  body.querySelectorAll('.dir-cb').forEach(cb => { cb.checked = checked; });
+  body.querySelectorAll('.dir-cb').forEach(cb => { cb.checked = checked; cb.indeterminate = false; });
   updateAcceptedActionBar();
+  updateAncestorDirCheckboxes(body);
 }
 
 function renderBinFileRow(item, depth) {
@@ -1087,6 +1203,7 @@ function renderBinFileRow(item, depth) {
     if (e.target.checked) selectedBinPaths.add(item.path);
     else selectedBinPaths.delete(item.path);
     updateBinActionBar();
+    updateAncestorDirCheckboxes(cb);
   });
 
   const nameEl = document.createElement('span');

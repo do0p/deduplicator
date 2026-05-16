@@ -23,6 +23,7 @@ import (
 	_ "image/png"
 
 	"github.com/dominik/duplicates/internal/matcher"
+	"github.com/dominik/duplicates/internal/phashcache"
 	"github.com/dominik/duplicates/internal/scanner"
 	"github.com/dominik/duplicates/internal/store"
 	"github.com/gorilla/websocket"
@@ -38,6 +39,7 @@ type Server struct {
 	version    string
 	accepted   *store.AcceptedStore
 	recycleBin string
+	pHashCache *phashcache.Cache
 	state      scanState
 	subs       subscribers
 	fs         http.Handler
@@ -50,6 +52,7 @@ type scanState struct {
 	phase   string
 	scanned int
 	total   int
+	records []scanner.FileRecord
 	results []matcher.DuplicateGroup
 	errMsg  string
 }
@@ -105,12 +108,13 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-func New(mountRoot, version string, accepted *store.AcceptedStore, recycleBin string, webFS http.Handler) *Server {
+func New(mountRoot, version string, accepted *store.AcceptedStore, recycleBin string, cache *phashcache.Cache, webFS http.Handler) *Server {
 	return &Server{
 		mountRoot:  mountRoot,
 		version:    version,
 		accepted:   accepted,
 		recycleBin: recycleBin,
+		pHashCache: cache,
 		fs:         webFS,
 	}
 }
@@ -121,6 +125,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/cancel", s.handleCancel)
 	mux.HandleFunc("GET /api/status", s.handleStatus)
 	mux.HandleFunc("GET /api/results", s.handleResults)
+	mux.HandleFunc("POST /api/rematch", s.handleRematch)
 	mux.HandleFunc("GET /api/image", s.handleImage)
 	mux.HandleFunc("GET /api/fileinfo", s.handleFileInfo)
 	mux.HandleFunc("GET /api/version", s.handleVersion)
@@ -589,7 +594,7 @@ func (s *Server) runScan(dirs []string, patterns []*regexp.Regexp, threshold int
 		}
 	}()
 
-	records, err := scanner.Scan(ctx, dirs, patterns, progress)
+	records, err := scanner.Scan(ctx, dirs, patterns, progress, s.pHashCache)
 	if err != nil {
 		if ctx.Err() != nil {
 			log.Printf("scan cancelled")
@@ -601,11 +606,19 @@ func (s *Server) runScan(dirs []string, patterns []*regexp.Regexp, threshold int
 		return
 	}
 
+	s.state.mu.Lock()
+	s.state.records = records
+	s.state.mu.Unlock()
+
 	log.Printf("matching started: %d records", len(records))
 	progress <- scanner.Progress{Phase: "matching", Scanned: len(records), Total: len(records)}
 
 	groups := matcher.FindDuplicates(records, threshold)
 	log.Printf("matching complete: %d duplicate groups found", len(groups))
+
+	if err := s.pHashCache.Save(); err != nil {
+		log.Printf("phash cache save failed: %v", err)
+	}
 
 	s.state.mu.Lock()
 	s.state.results = groups
@@ -653,6 +666,39 @@ func (s *Server) handleResults(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, filtered)
+}
+
+func (s *Server) handleRematch(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Threshold int `json:"threshold"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	s.state.mu.RLock()
+	phase := s.state.phase
+	records := s.state.records
+	s.state.mu.RUnlock()
+
+	if phase != "done" {
+		http.Error(w, "scan not complete", http.StatusConflict)
+		return
+	}
+
+	threshold := req.Threshold
+	if threshold < 0 {
+		threshold = 0
+	}
+
+	groups := matcher.FindDuplicates(records, threshold)
+
+	s.state.mu.Lock()
+	s.state.results = groups
+	s.state.mu.Unlock()
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {

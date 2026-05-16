@@ -1,0 +1,10 @@
+{
+  "name": "duplicates-tests",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/tree-selection.test.js"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.0"
+  }
+}

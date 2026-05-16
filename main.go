@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/dominik/duplicates/internal/phashcache"
 	"github.com/dominik/duplicates/internal/server"
 	"github.com/dominik/duplicates/internal/store"
 )
@@ -37,13 +38,18 @@ func main() {
 		log.Fatalf("failed to load accepted store: %v", err)
 	}
 
+	pHashCache, err := phashcache.Load(dataDir)
+	if err != nil {
+		log.Fatalf("failed to load phash cache: %v", err)
+	}
+
 	subFS, err := fs.Sub(webFiles, "web")
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	mux := http.NewServeMux()
-	srv := server.New(mountRoot, version, accepted, recycleBin, http.FileServer(http.FS(subFS)))
+	srv := server.New(mountRoot, version, accepted, recycleBin, pHashCache, http.FileServer(http.FS(subFS)))
 	srv.RegisterRoutes(mux)
 
 	log.Printf("listening on :%s  mount=%s", port, mountRoot)

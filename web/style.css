@@ -143,6 +143,8 @@ progress::-moz-progress-bar { background: #3b5bdb; border-radius: 99px; }
 .stats { font-size: 0.85rem; color: #94a3b8; }
 
 .filter-row { display: flex; gap: 0.75rem; margin-bottom: 1rem; }
+.threshold-filter-row { margin-bottom: 1.25rem; }
+.threshold-filter-row label { display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.4rem; }
 .filter-row input {
   flex: 1;
   background: #1a1d27;

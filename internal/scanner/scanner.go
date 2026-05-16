@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/corona10/goimagehash"
+	"github.com/dominik/duplicates/internal/phashcache"
 	_ "golang.org/x/image/bmp"
 	_ "golang.org/x/image/tiff"
 	_ "golang.org/x/image/webp"
@@ -87,7 +88,7 @@ func ancestorInodes(dir string) (map[inodeKey]bool, error) {
 	return visited, nil
 }
 
-func Scan(ctx context.Context, dirs []string, ignorePatterns []*regexp.Regexp, progress chan<- Progress) ([]FileRecord, error) {
+func Scan(ctx context.Context, dirs []string, ignorePatterns []*regexp.Regexp, progress chan<- Progress, cache *phashcache.Cache) ([]FileRecord, error) {
 	progress <- Progress{Phase: "walking"}
 	log.Printf("walk starting: dirs=%v", dirs)
 
@@ -176,7 +177,7 @@ func Scan(ctx context.Context, dirs []string, ignorePatterns []*regexp.Regexp, p
 				if ctx.Err() != nil {
 					continue // drain channel without hashing
 				}
-				rec, ok := hashRecord(path)
+				rec, ok := hashRecord(path, cache)
 				if !ok {
 					scanned.Add(1)
 					progress <- Progress{Phase: "scanning", Scanned: int(scanned.Load()), Total: total}
@@ -210,15 +211,15 @@ outer:
 	return records, nil
 }
 
-func hashRecord(path string) (FileRecord, bool) {
+func hashRecord(path string, cache *phashcache.Cache) (FileRecord, bool) {
 	ext := strings.ToLower(filepath.Ext(path))
 	if videoExts[ext] {
 		return hashVideoFile(path)
 	}
-	return hashImageFile(path)
+	return hashImageFile(path, cache)
 }
 
-func hashImageFile(path string) (FileRecord, bool) {
+func hashImageFile(path string, cache *phashcache.Cache) (FileRecord, bool) {
 	f, err := os.Open(path)
 	if err != nil {
 		return FileRecord{}, false
@@ -230,22 +231,46 @@ func hashImageFile(path string) (FileRecord, bool) {
 		return FileRecord{}, false
 	}
 
+	// Compute SHA-256 first — cheap sequential read, enables cache lookup.
+	sha := sha256.New()
+	if _, err := io.Copy(sha, f); err != nil {
+		return FileRecord{}, false
+	}
+	contentHash := fmt.Sprintf("%x", sha.Sum(nil))
+
+	// Cache hit: skip image decode entirely.
+	if pHash, ok := cache.Get(contentHash); ok {
+		return FileRecord{
+			Path:        path,
+			Hash:        pHash,
+			Size:        info.Size(),
+			ModTime:     info.ModTime(),
+			ContentHash: contentHash,
+		}, true
+	}
+
+	// Cache miss: decode image and compute pHash.
+	if _, err := f.Seek(0, 0); err != nil {
+		return FileRecord{}, false
+	}
 	img, _, err := image.Decode(f)
 	if err != nil {
 		log.Printf("decode error %s: %v", path, err)
 		return FileRecord{}, false
 	}
-
 	h, err := goimagehash.PerceptionHash(img)
 	if err != nil {
 		return FileRecord{}, false
 	}
 
+	cache.Set(contentHash, h.GetHash())
+
 	return FileRecord{
-		Path:    path,
-		Hash:    h.GetHash(),
-		Size:    info.Size(),
-		ModTime: info.ModTime(),
+		Path:        path,
+		Hash:        h.GetHash(),
+		Size:        info.Size(),
+		ModTime:     info.ModTime(),
+		ContentHash: contentHash,
 	}, true
 }
 

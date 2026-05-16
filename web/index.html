@@ -30,14 +30,6 @@
     <textarea id="ignore-patterns" placeholder="\.thumb\.\nThumbnails/\n_preview_">@eaDir</textarea>
   </div>
 
-  <div class="form-group">
-    <label>Similarity threshold — Hamming distance (0 = exact only, 20 = very similar)</label>
-    <div class="threshold-row">
-      <input type="range" id="threshold" min="0" max="20" value="10">
-      <span class="val" id="threshold-val">10</span>
-    </div>
-  </div>
-
   <button class="btn btn-primary" id="btn-scan" disabled>Start scan</button>
 </div>
 
@@ -78,8 +70,16 @@
   <div class="filter-row">
     <input type="search" id="filter-input" placeholder="Filter by filename…">
     <label class="exact-toggle">
-      <input type="checkbox" id="exact-only"> Exact matches only
+      <input type="checkbox" id="exact-only"> Byte-identical only
     </label>
+  </div>
+
+  <div class="threshold-filter-row">
+    <label>Similarity — Hamming distance (0 = exact only, 20 = very similar)</label>
+    <div class="threshold-row">
+      <input type="range" id="threshold" min="0" max="20" value="10">
+      <span class="val" id="threshold-val">10</span>
+    </div>
   </div>
 
   <table id="results-table">
