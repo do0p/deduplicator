@@ -794,8 +794,10 @@ async function openModal(path, files = null, index = 0, checkCallback = null, ge
   $('modal').classList.add('open');
   if (modalReleaseTrap) modalReleaseTrap();
   modalReleaseTrap = trapFocus($('modal-content'));
-  const firstFocusable = $('modal-content').querySelector('button:not(:disabled), input:not(:disabled)');
-  if (firstFocusable) firstFocusable.focus();
+  requestAnimationFrame(() => {
+    const firstFocusable = $('modal-content').querySelector('button:not(:disabled), input:not(:disabled)');
+    if (firstFocusable) firstFocusable.focus();
+  });
 
   try {
     const res = await fetch('/api/fileinfo?path=' + encodeURIComponent(path));
