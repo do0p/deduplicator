@@ -300,6 +300,7 @@ function fmtDuration(ms) {
 }
 
 function startProgress() {
+  $('btn-go-results').disabled = true;
   showView('progress');
 
   const bar = $('progress-bar');
@@ -881,7 +882,6 @@ async function goToSetup() {
   selectedDirs.clear();
   clearSelection();
   $('btn-scan').disabled = true;
-  $('btn-go-results').disabled = true;
   showView('setup');
   await loadTree('', $('folder-tree'));
 }
