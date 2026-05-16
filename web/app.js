@@ -94,12 +94,13 @@ async function loadTree(path, container, depth = 0, parentCb = null) {
       cb.type = 'checkbox';
       cb.dataset.path = rootPath;
       cb.title = 'Select all folders';
-      cb.addEventListener('click', (e) => {
-        e.preventDefault();
-        const next = !(cb.checked || cb.indeterminate);
-        cb.checked = next;
+      let _preInd = false;
+      cb.addEventListener('mousedown', () => { _preInd = cb.indeterminate; });
+      cb.addEventListener('keydown', e => { if (e.key === ' ') _preInd = cb.indeterminate; });
+      cb.addEventListener('change', () => {
+        if (_preInd) cb.checked = false;
         cb.indeterminate = false;
-        setSubtreeChecked($('folder-tree'), next);
+        setSubtreeChecked($('folder-tree'), cb.checked);
         $('btn-scan').disabled = selectedDirs.size === 0;
       });
 
@@ -154,14 +155,15 @@ async function loadTree(path, container, depth = 0, parentCb = null) {
 
     cb._childrenContainer = children;
 
-    cb.addEventListener('click', (ev) => {
-      ev.preventDefault();
-      const next = !(cb.checked || cb.indeterminate);
-      cb.checked = next;
+    let _preInd = false;
+    cb.addEventListener('mousedown', () => { _preInd = cb.indeterminate; });
+    cb.addEventListener('keydown', ev => { if (ev.key === ' ') _preInd = cb.indeterminate; });
+    cb.addEventListener('change', () => {
+      if (_preInd) cb.checked = false;
       cb.indeterminate = false;
-      if (next) selectedDirs.add(e.path);
+      if (cb.checked) selectedDirs.add(e.path);
       else selectedDirs.delete(e.path);
-      setSubtreeChecked(children, next);
+      setSubtreeChecked(children, cb.checked);
       updateFolderAncestors(cb);
       $('btn-scan').disabled = selectedDirs.size === 0;
     });
@@ -1127,13 +1129,14 @@ function renderTreeNode(node, depth, renderFileFn, onCascade) {
     const dirCb = document.createElement('input');
     dirCb.type = 'checkbox';
     dirCb.className = 'dir-cb';
-    dirCb.addEventListener('click', e => {
-      e.stopPropagation();
-      e.preventDefault();
-      const next = !(dirCb.checked || dirCb.indeterminate);
-      dirCb.checked = next;
+    let _preInd = false;
+    dirCb.addEventListener('mousedown', () => { _preInd = dirCb.indeterminate; });
+    dirCb.addEventListener('keydown', e => { if (e.key === ' ') _preInd = dirCb.indeterminate; });
+    dirCb.addEventListener('click', e => e.stopPropagation());
+    dirCb.addEventListener('change', () => {
+      if (_preInd) dirCb.checked = false;
       dirCb.indeterminate = false;
-      onCascade(body, next);
+      onCascade(body, dirCb.checked);
       updateAncestorDirCheckboxes(body);
     });
 

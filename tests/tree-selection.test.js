@@ -55,18 +55,6 @@ async function createApp() {
 
   const win = dom.window;
 
-  // jsdom spec-compliant checkbox activation pre-activates (toggles checked) BEFORE
-  // firing the click event, then restores on preventDefault — opposite of Chrome.
-  // Patch the impl prototype to disable this so click handlers see the pre-click state.
-  {
-    const tmp = win.document.createElement('input');
-    tmp.type = 'checkbox';
-    const implSym = Object.getOwnPropertySymbols(tmp).find(s => s.toString() === 'Symbol(impl)');
-    const implProto = Object.getPrototypeOf(tmp[implSym]);
-    implProto._legacyPreActivationBehavior = function() {};
-    implProto._legacyCanceledActivationBehavior = function() {};
-  }
-
   win.fetch = makeFetch();
   // Stub WebSocket so the status-check in the init IIFE doesn't fail
   win.WebSocket = class { constructor() {} close() {} };
@@ -101,6 +89,10 @@ function cbFor(win, path) {
 }
 
 function click(cb) {
+  const win = cb.ownerDocument.defaultView;
+  // mousedown first so app's mousedown handler captures pre-click indeterminate state
+  cb.dispatchEvent(new win.MouseEvent('mousedown', { bubbles: true }));
+  // native click: jsdom pre-activates (toggles checked) then fires change
   cb.click();
 }
 
