@@ -879,7 +879,24 @@ function closeModal() {
   resetZoom();
   sliderSet('', false);
   if (modalReleaseTrap) { modalReleaseTrap(); modalReleaseTrap = null; }
-  if (modalTriggerEl) { modalTriggerEl.focus(); modalTriggerEl = null; }
+
+  if (modalGroupList && modalGroupIndex >= 0) {
+    const targetTr = tbody.querySelector(`tr[data-idx="${modalGroupIndex}"]`);
+    if (targetTr && targetTr !== expandedRow) {
+      toggleDetail(targetTr, modalGroupList[modalGroupIndex], modalGroupIndex);
+    }
+    if (targetTr) {
+      targetTr.scrollIntoView({ block: 'nearest' });
+      const detailRow = tbody.querySelector('tr.detail-row');
+      const firstThumb = detailRow && detailRow.querySelector('img, video');
+      if (firstThumb) firstThumb.focus();
+    }
+    modalTriggerEl = null;
+  } else if (modalTriggerEl) {
+    modalTriggerEl.focus();
+    modalTriggerEl = null;
+  }
+
   $('modal').classList.remove('open');
   stopModalVideo();
 }
