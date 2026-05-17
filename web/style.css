@@ -630,7 +630,7 @@ footer {
   /* confirm modal: stays centered with reduced padding */
   #confirm-modal { padding: 1rem; }
   .modal-content {
-    max-height: 92dvh;
+    height: 92dvh;
     border-radius: 14px 14px 0 0;
     width: 100%;
     max-width: 100%;
@@ -638,14 +638,16 @@ footer {
   .modal-body { flex-direction: column; }
   .modal-img-wrap {
     width: 100%;
-    max-height: 45dvh;
+    height: 45dvh;
+    flex-shrink: 0;
     border-right: none;
     border-bottom: 1px solid #2d3148;
   }
   #modal-img, #modal-video { max-height: 45dvh; width: 100%; object-fit: contain; }
   .modal-info {
     width: 100%;
-    max-height: 30dvh;
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
     border-left: none;
     border-top: 1px solid #2d3148;
