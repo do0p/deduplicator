@@ -1036,7 +1036,12 @@ $('modal-content').addEventListener('touchend', e => {
     return;
   }
 
-  if (touchMode === 'pan') { touchMode = null; return; }
+  if (touchMode === 'pan') {
+    const t = e.changedTouches[0];
+    if (Math.abs(t.clientX - panStart.x) < 6 && Math.abs(t.clientY - panStart.y) < 6) resetZoom(true);
+    touchMode = null;
+    return;
+  }
 
   if (touchMode !== 'swipe' || !swipeTouchStart) return;
   const t = e.changedTouches[0];
