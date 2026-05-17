@@ -876,6 +876,7 @@ function renderModalInfo(info) {
 }
 
 function closeModal() {
+  resetZoom();
   sliderSet('', false);
   if (modalReleaseTrap) { modalReleaseTrap(); modalReleaseTrap = null; }
   if (modalTriggerEl) { modalTriggerEl.focus(); modalTriggerEl = null; }
@@ -885,10 +886,10 @@ function closeModal() {
 $('modal-close').addEventListener('click', closeModal);
 $('modal').addEventListener('click', e => { if (e.target === $('modal')) closeModal(); });
 $('modal-prev').addEventListener('click', () => {
-  if (modalFileIndex > 0) openModal(modalFiles[--modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex);
+  if (modalFileIndex > 0) { resetZoom(); openModal(modalFiles[--modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex); }
 });
 $('modal-next').addEventListener('click', () => {
-  if (modalFileIndex < modalFiles.length - 1) openModal(modalFiles[++modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex);
+  if (modalFileIndex < modalFiles.length - 1) { resetZoom(); openModal(modalFiles[++modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex); }
 });
 $('modal-check').addEventListener('change', e => {
   if (modalCheckCallback) modalCheckCallback(modalCurrentPath, e.target.checked);
@@ -897,15 +898,33 @@ document.addEventListener('keydown', e => {
   if (!$('modal').classList.contains('open')) return;
   if (e.key === 'Escape') closeModal();
   else if (e.key === 'ArrowLeft' && modalFileIndex > 0)
-    openModal(modalFiles[--modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex);
+    { resetZoom(); openModal(modalFiles[--modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex); }
   else if (e.key === 'ArrowRight' && modalFileIndex < modalFiles.length - 1)
-    openModal(modalFiles[++modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex);
+    { resetZoom(); openModal(modalFiles[++modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex); }
 });
 
-// ---- Modal swipe gestures (touch screens) ----
-let swipeTouchStart = null;
-let swipeAxis = null;
+// ---- Modal touch: swipe navigation + pinch zoom ----
+let zoomScale = 1, zoomTx = 0, zoomTy = 0;
 const mediaSlider = $('modal-media-slider');
+const zoomWrap = $('modal-zoom-wrap');
+const imgWrapEl = $('modal-content').querySelector('.modal-img-wrap');
+
+function applyZoom() {
+  zoomWrap.style.transform = (zoomScale === 1 && !zoomTx && !zoomTy)
+    ? '' : `translate(${zoomTx}px, ${zoomTy}px) scale(${zoomScale})`;
+}
+
+function resetZoom(animated = false) {
+  zoomScale = 1; zoomTx = 0; zoomTy = 0;
+  if (animated) {
+    zoomWrap.style.transition = 'transform 0.25s ease';
+    applyZoom();
+    setTimeout(() => { zoomWrap.style.transition = ''; }, 260);
+  } else {
+    zoomWrap.style.transition = '';
+    applyZoom();
+  }
+}
 
 function sliderSet(transform, animated) {
   if (animated) mediaSlider.classList.remove('no-transition');
@@ -922,53 +941,134 @@ function commitSwipe(outTransform, inTransform, action) {
   }, { once: true });
 }
 
+// Gesture state
+let touchMode = null; // 'swipe' | 'pan' | 'pinch'
+let swipeTouchStart = null, swipeAxis = null;
+let pinchStart = null; // { dist, scale, tx, ty, cx, cy }
+let panStart = null;   // { x, y, tx, ty }
+let lastTapTime = 0, lastTapX = 0, lastTapY = 0;
+
 $('modal-content').addEventListener('touchstart', e => {
-  if (e.target.closest('.modal-info')) { swipeTouchStart = null; return; }
+  if (e.target.closest('.modal-info, button, input')) { swipeTouchStart = null; return; }
+
+  if (e.touches.length >= 2) {
+    touchMode = 'pinch';
+    swipeTouchStart = null;
+    const t0 = e.touches[0], t1 = e.touches[1];
+    const rect = imgWrapEl.getBoundingClientRect();
+    pinchStart = {
+      dist:  Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY),
+      scale: zoomScale, tx: zoomTx, ty: zoomTy,
+      cx: (t0.clientX + t1.clientX) / 2 - rect.left,
+      cy: (t0.clientY + t1.clientY) / 2 - rect.top,
+    };
+    return;
+  }
+
+  const t = e.touches[0];
+
+  if (zoomScale > 1) {
+    touchMode = 'pan';
+    panStart = { x: t.clientX, y: t.clientY, tx: zoomTx, ty: zoomTy };
+    return;
+  }
+
+  // Double-tap to zoom
+  const now = Date.now();
+  if (now - lastTapTime < 300 && Math.hypot(t.clientX - lastTapX, t.clientY - lastTapY) < 30) {
+    lastTapTime = 0;
+    if (zoomScale === 1) {
+      const rect = imgWrapEl.getBoundingClientRect();
+      const cx = t.clientX - rect.left, cy = t.clientY - rect.top;
+      zoomScale = 2.5; zoomTx = cx * (1 - 2.5); zoomTy = cy * (1 - 2.5);
+      zoomWrap.style.transition = 'transform 0.25s ease';
+      applyZoom();
+      setTimeout(() => { zoomWrap.style.transition = ''; }, 260);
+    } else {
+      resetZoom(true);
+    }
+    touchMode = null;
+    return;
+  }
+  lastTapTime = now; lastTapX = t.clientX; lastTapY = t.clientY;
+
+  touchMode = 'swipe';
   swipeAxis = null;
-  const t = e.changedTouches[0];
   swipeTouchStart = { x: t.clientX, y: t.clientY };
 }, { passive: true });
 
 $('modal-content').addEventListener('touchmove', e => {
-  if (!swipeTouchStart) return;
-  const t = e.changedTouches[0];
-  const dx = t.clientX - swipeTouchStart.x;
-  const dy = t.clientY - swipeTouchStart.y;
-  const absDx = Math.abs(dx), absDy = Math.abs(dy);
-  if (!swipeAxis && (absDx > 8 || absDy > 8)) swipeAxis = absDx >= absDy ? 'h' : 'v';
-  if (!swipeAxis) return;
-  if (swipeAxis === 'h') sliderSet(`translateX(${dx}px)`, false);
-  else sliderSet(`translateY(${dy}px)`, false);
+  if (touchMode === 'pinch' && e.touches.length >= 2) {
+    const t0 = e.touches[0], t1 = e.touches[1];
+    const dist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
+    const newScale = Math.min(5, Math.max(1, pinchStart.scale * dist / pinchStart.dist));
+    const ratio = newScale / pinchStart.scale;
+    zoomScale = newScale;
+    zoomTx = pinchStart.cx - (pinchStart.cx - pinchStart.tx) * ratio;
+    zoomTy = pinchStart.cy - (pinchStart.cy - pinchStart.ty) * ratio;
+    applyZoom();
+    return;
+  }
+
+  if (touchMode === 'pan') {
+    const t = e.touches[0];
+    zoomTx = panStart.tx + (t.clientX - panStart.x);
+    zoomTy = panStart.ty + (t.clientY - panStart.y);
+    applyZoom();
+    return;
+  }
+
+  if (touchMode === 'swipe' && swipeTouchStart) {
+    const t = e.changedTouches[0];
+    const dx = t.clientX - swipeTouchStart.x, dy = t.clientY - swipeTouchStart.y;
+    const absDx = Math.abs(dx), absDy = Math.abs(dy);
+    if (!swipeAxis && (absDx > 8 || absDy > 8)) swipeAxis = absDx >= absDy ? 'h' : 'v';
+    if (!swipeAxis) return;
+    if (swipeAxis === 'h') sliderSet(`translateX(${dx}px)`, false);
+    else sliderSet(`translateY(${dy}px)`, false);
+  }
 }, { passive: true });
 
 $('modal-content').addEventListener('touchend', e => {
-  if (!swipeTouchStart) return;
+  if (touchMode === 'pinch') {
+    if (zoomScale < 1.08) resetZoom(true);
+    touchMode = null;
+    return;
+  }
+
+  if (touchMode === 'pan') { touchMode = null; return; }
+
+  if (touchMode !== 'swipe' || !swipeTouchStart) return;
   const t = e.changedTouches[0];
-  const dx = t.clientX - swipeTouchStart.x;
-  const dy = t.clientY - swipeTouchStart.y;
-  swipeTouchStart = null;
+  const dx = t.clientX - swipeTouchStart.x, dy = t.clientY - swipeTouchStart.y;
+  swipeTouchStart = null; touchMode = null;
   if (!swipeAxis) return;
   const threshold = 40;
 
   if (swipeAxis === 'h') {
     if (dx < -threshold && modalFileIndex < modalFiles.length - 1)
       commitSwipe('translateX(-110%)', 'translateX(110%)', () =>
-        openModal(modalFiles[++modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex));
+        { resetZoom(); openModal(modalFiles[++modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex); });
     else if (dx > threshold && modalFileIndex > 0)
       commitSwipe('translateX(110%)', 'translateX(-110%)', () =>
-        openModal(modalFiles[--modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex));
+        { resetZoom(); openModal(modalFiles[--modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex); });
     else sliderSet('', true);
   } else {
     if (dy < -threshold && modalGroupList && modalGroupIndex < modalGroupList.length - 1) {
       const g = modalGroupList[modalGroupIndex + 1];
       commitSwipe('translateY(-110%)', 'translateY(110%)', () =>
-        openModal(g.files[0].path, g.files, 0, makeResultsCheckCallback(), p => selectedPaths.has(p), modalGroupList, modalGroupIndex + 1));
+        { resetZoom(); openModal(g.files[0].path, g.files, 0, makeResultsCheckCallback(), p => selectedPaths.has(p), modalGroupList, modalGroupIndex + 1); });
     } else if (dy > threshold && modalGroupList && modalGroupIndex > 0) {
       const g = modalGroupList[modalGroupIndex - 1];
       commitSwipe('translateY(110%)', 'translateY(-110%)', () =>
-        openModal(g.files[0].path, g.files, 0, makeResultsCheckCallback(), p => selectedPaths.has(p), modalGroupList, modalGroupIndex - 1));
+        { resetZoom(); openModal(g.files[0].path, g.files, 0, makeResultsCheckCallback(), p => selectedPaths.has(p), modalGroupList, modalGroupIndex - 1); });
     } else sliderSet('', true);
   }
+}, { passive: true });
+
+$('modal-content').addEventListener('touchcancel', () => {
+  touchMode = null; swipeTouchStart = null;
+  sliderSet('', true);
 }, { passive: true });
 
 // ---- Sorting ----
