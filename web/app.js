@@ -3,6 +3,7 @@
 // ---- State ----
 var selectedDirs = new Set(); // var so tests can read window.selectedDirs
 let allGroups = [];
+let currentFilteredGroups = [];
 let sortCol = 'size';
 let sortAsc = false;
 let expandedRow = null;
@@ -615,6 +616,7 @@ function renderResults() {
     return;
   }
   $('no-results').style.display = 'none';
+  currentFilteredGroups = groups;
 
   groups.forEach((g, idx) => {
     const rep = g.files[0];
@@ -627,12 +629,21 @@ function renderResults() {
       <td><span class="count-badge">${g.files.length}</span></td>
       <td class="size-cell">${fmt(totalSize)}</td>
     `;
-    tr.addEventListener('click', () => toggleDetail(tr, g));
+    tr.addEventListener('click', () => toggleDetail(tr, g, idx));
     tbody.appendChild(tr);
   });
 }
 
-function toggleDetail(tr, g) {
+function makeResultsCheckCallback() {
+  return (p, checked) => {
+    if (checked) selectedPaths.add(p); else selectedPaths.delete(p);
+    const mainCb = [...document.querySelectorAll('.fc-check')].find(c => c.dataset.path === p);
+    if (mainCb) mainCb.checked = checked;
+    updateActionBar();
+  };
+}
+
+function toggleDetail(tr, g, groupIdx) {
   // Collapse previous
   if (expandedRow && expandedRow !== tr) {
     const prev = tbody.querySelector('tr.detail-row');
@@ -703,13 +714,10 @@ function toggleDetail(tr, g) {
     thumb.addEventListener('click', ev => {
       ev.stopPropagation();
       openModal(f.path, g.files, idx,
-        (p, checked) => {
-          if (checked) selectedPaths.add(p); else selectedPaths.delete(p);
-          const mainCb = [...document.querySelectorAll('.fc-check')].find(c => c.dataset.path === p);
-          if (mainCb) mainCb.checked = checked;
-          updateActionBar();
-        },
-        p => selectedPaths.has(p)
+        makeResultsCheckCallback(),
+        p => selectedPaths.has(p),
+        currentFilteredGroups,
+        groupIdx
       );
     });
 
@@ -751,6 +759,8 @@ let modalCheckCallback = null;
 let modalGetChecked = null;
 let modalTriggerEl = null;
 let modalReleaseTrap = null;
+let modalGroupList = null;
+let modalGroupIndex = -1;
 
 function stopModalVideo() {
   const v = $('modal-video');
@@ -758,13 +768,15 @@ function stopModalVideo() {
   v.src = '';
 }
 
-async function openModal(path, files = null, index = 0, checkCallback = null, getChecked = null) {
+async function openModal(path, files = null, index = 0, checkCallback = null, getChecked = null, groupList = null, groupIndex = -1) {
   stopModalVideo();
   modalFiles = files || [];
   modalFileIndex = index;
   modalCurrentPath = path;
   modalCheckCallback = checkCallback || null;
   modalGetChecked = getChecked || null;
+  modalGroupList = groupList;
+  modalGroupIndex = groupIndex;
 
   const url = '/api/image?path=' + encodeURIComponent(path);
   if (isVideo(path)) {
@@ -872,10 +884,10 @@ function closeModal() {
 $('modal-close').addEventListener('click', closeModal);
 $('modal').addEventListener('click', e => { if (e.target === $('modal')) closeModal(); });
 $('modal-prev').addEventListener('click', () => {
-  if (modalFileIndex > 0) openModal(modalFiles[--modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked);
+  if (modalFileIndex > 0) openModal(modalFiles[--modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex);
 });
 $('modal-next').addEventListener('click', () => {
-  if (modalFileIndex < modalFiles.length - 1) openModal(modalFiles[++modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked);
+  if (modalFileIndex < modalFiles.length - 1) openModal(modalFiles[++modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex);
 });
 $('modal-check').addEventListener('change', e => {
   if (modalCheckCallback) modalCheckCallback(modalCurrentPath, e.target.checked);
@@ -884,10 +896,43 @@ document.addEventListener('keydown', e => {
   if (!$('modal').classList.contains('open')) return;
   if (e.key === 'Escape') closeModal();
   else if (e.key === 'ArrowLeft' && modalFileIndex > 0)
-    openModal(modalFiles[--modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked);
+    openModal(modalFiles[--modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex);
   else if (e.key === 'ArrowRight' && modalFileIndex < modalFiles.length - 1)
-    openModal(modalFiles[++modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked);
+    openModal(modalFiles[++modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex);
 });
+
+// ---- Modal swipe gestures (touch screens) ----
+let swipeTouchStart = null;
+$('modal-content').addEventListener('touchstart', e => {
+  if (e.target.closest('.modal-info')) { swipeTouchStart = null; return; }
+  const t = e.changedTouches[0];
+  swipeTouchStart = { x: t.clientX, y: t.clientY };
+}, { passive: true });
+$('modal-content').addEventListener('touchend', e => {
+  if (!swipeTouchStart) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - swipeTouchStart.x;
+  const dy = t.clientY - swipeTouchStart.y;
+  swipeTouchStart = null;
+  const absDx = Math.abs(dx), absDy = Math.abs(dy);
+  if (absDx < 40 && absDy < 40) return;
+  if (absDx >= absDy) {
+    // horizontal: navigate within group
+    if (dx < 0 && modalFileIndex < modalFiles.length - 1)
+      openModal(modalFiles[++modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex);
+    else if (dx > 0 && modalFileIndex > 0)
+      openModal(modalFiles[--modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex);
+  } else if (modalGroupList && modalGroupIndex >= 0) {
+    // vertical: navigate between groups (results view only)
+    if (dy < 0 && modalGroupIndex < modalGroupList.length - 1) {
+      const g = modalGroupList[modalGroupIndex + 1];
+      openModal(g.files[0].path, g.files, 0, makeResultsCheckCallback(), p => selectedPaths.has(p), modalGroupList, modalGroupIndex + 1);
+    } else if (dy > 0 && modalGroupIndex > 0) {
+      const g = modalGroupList[modalGroupIndex - 1];
+      openModal(g.files[0].path, g.files, 0, makeResultsCheckCallback(), p => selectedPaths.has(p), modalGroupList, modalGroupIndex - 1);
+    }
+  }
+}, { passive: true });
 
 // ---- Sorting ----
 document.querySelectorAll('thead th[data-col]').forEach(th => {
