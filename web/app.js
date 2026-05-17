@@ -754,6 +754,7 @@ const tbody = document.getElementById('results-body');
 // ---- Modal ----
 let modalFiles = [];
 let modalFileIndex = 0;
+let swipeBusy = false;
 let modalCurrentPath = '';
 let modalCheckCallback = null;
 let modalGetChecked = null;
@@ -876,6 +877,7 @@ function renderModalInfo(info) {
 }
 
 function closeModal() {
+  swipeBusy = false;
   resetZoom();
   sliderSet('', false);
   if (modalReleaseTrap) { modalReleaseTrap(); modalReleaseTrap = null; }
@@ -950,11 +952,16 @@ function sliderSet(transform, animated) {
 }
 
 function commitSwipe(outTransform, inTransform, action) {
+  if (swipeBusy) return;
+  swipeBusy = true;
   sliderSet(outTransform, true);
   mediaSlider.addEventListener('transitionend', function once() {
     sliderSet(inTransform, false);
     action();
-    requestAnimationFrame(() => requestAnimationFrame(() => sliderSet('', true)));
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      sliderSet('', true);
+      mediaSlider.addEventListener('transitionend', () => { swipeBusy = false; }, { once: true });
+    }));
   }, { once: true });
 }
 
