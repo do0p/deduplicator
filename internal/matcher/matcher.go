@@ -86,16 +86,12 @@ func findImageDuplicates(records []scanner.FileRecord, threshold int) []Duplicat
 		byHash[r.Hash] = append(byHash[r.Hash], i)
 	}
 
-	used := make([]bool, len(records))
 	var exactGroups [][]int
 	var singletons []int
 
 	for _, idxs := range byHash {
 		if len(idxs) > 1 {
 			exactGroups = append(exactGroups, idxs)
-			for _, i := range idxs {
-				used[i] = true
-			}
 		} else {
 			singletons = append(singletons, idxs[0])
 		}
@@ -171,6 +167,5 @@ func findImageDuplicates(records []scanner.FileRecord, threshold int) []Duplicat
 		groups = append(groups, g)
 	}
 
-	_ = used
 	return groups
 }

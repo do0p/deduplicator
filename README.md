@@ -74,6 +74,8 @@ All settings are passed as environment variables.
 
 > **Tip:** Set `RECYCLE_BIN` to a path inside your `MOUNT_ROOT` volume so the move is atomic. On Synology NAS this is typically the `#recycle` folder inside your photo share.
 
+> **Security:** The server has no built-in authentication. It is designed to run on a trusted local network. Do not expose it directly to the internet — if remote access is needed, place it behind a reverse proxy (e.g. Nginx, Caddy, Traefik) with authentication enabled.
+
 ---
 
 ## Supported formats

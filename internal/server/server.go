@@ -197,6 +197,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAccept(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
 	var req struct {
 		Paths []string `json:"paths"`
 	}
@@ -225,6 +226,7 @@ func (s *Server) handleTrash(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "recycle bin not configured", http.StatusForbidden)
 		return
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
 	var req struct {
 		Paths []string `json:"paths"`
 	}
@@ -342,6 +344,7 @@ func (s *Server) handleAccepted(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUnaccept(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
 	var req struct {
 		Paths []string `json:"paths"`
 	}
@@ -429,6 +432,7 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "recycle bin not configured", http.StatusForbidden)
 		return
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
 	var req struct {
 		Paths []string `json:"paths"`
 	}
@@ -551,6 +555,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req scanRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -593,6 +598,8 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	threshold := req.Threshold
 	if threshold < 0 {
 		threshold = 0
+	} else if threshold > 20 {
+		threshold = 20
 	}
 
 	// Atomically claim the "walking" slot to prevent a TOCTOU race where two
@@ -719,6 +726,7 @@ func (s *Server) handleResults(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRematch(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
 	var req struct {
 		Threshold int `json:"threshold"`
 	}
@@ -740,6 +748,8 @@ func (s *Server) handleRematch(w http.ResponseWriter, r *http.Request) {
 	threshold := req.Threshold
 	if threshold < 0 {
 		threshold = 0
+	} else if threshold > 20 {
+		threshold = 20
 	}
 
 	groups := matcher.FindDuplicates(records, threshold)

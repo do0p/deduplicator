@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/do0p/deduplicator/internal/phashcache"
 	"github.com/do0p/deduplicator/internal/server"
@@ -52,8 +53,15 @@ func main() {
 	srv := server.New(mountRoot, version, accepted, recycleBin, pHashCache, dataDir, http.FileServer(http.FS(subFS)))
 	srv.RegisterRoutes(mux)
 
+	httpSrv := &http.Server{
+		Addr:         ":" + port,
+		Handler:      mux,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 120 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
 	log.Printf("listening on :%s  mount=%s", port, mountRoot)
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
+	if err := httpSrv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }
