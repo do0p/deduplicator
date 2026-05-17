@@ -398,7 +398,6 @@ tbody td { padding: 0.55rem 0.75rem; vertical-align: middle; }
   align-items: center;
   justify-content: center;
   transform-origin: 0 0;
-  touch-action: none;
 }
 
 #modal-img,

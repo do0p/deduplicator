@@ -952,6 +952,7 @@ $('modal-content').addEventListener('touchstart', e => {
   if (e.target.closest('.modal-info, button, input')) { swipeTouchStart = null; return; }
 
   if (e.touches.length >= 2) {
+    e.preventDefault();
     touchMode = 'pinch';
     swipeTouchStart = null;
     const t0 = e.touches[0], t1 = e.touches[1];
@@ -995,9 +996,10 @@ $('modal-content').addEventListener('touchstart', e => {
   touchMode = 'swipe';
   swipeAxis = null;
   swipeTouchStart = { x: t.clientX, y: t.clientY };
-}, { passive: true });
+}, { passive: false });
 
 $('modal-content').addEventListener('touchmove', e => {
+  if (touchMode === 'pinch' || touchMode === 'pan') e.preventDefault();
   if (touchMode === 'pinch' && e.touches.length >= 2) {
     const t0 = e.touches[0], t1 = e.touches[1];
     const dist = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
@@ -1027,7 +1029,7 @@ $('modal-content').addEventListener('touchmove', e => {
     if (swipeAxis === 'h') sliderSet(`translateX(${dx}px)`, false);
     else sliderSet(`translateY(${dy}px)`, false);
   }
-}, { passive: true });
+}, { passive: false });
 
 $('modal-content').addEventListener('touchend', e => {
   if (touchMode === 'pinch') {
