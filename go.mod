@@ -1,4 +1,4 @@
-module github.com/dominik/duplicates
+module github.com/do0p/deduplicator
 
 go 1.25.0
 

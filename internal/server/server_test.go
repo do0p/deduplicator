@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dominik/duplicates/internal/scanner"
-	"github.com/dominik/duplicates/internal/store"
+	"github.com/do0p/deduplicator/internal/scanner"
+	"github.com/do0p/deduplicator/internal/store"
 	"github.com/gorilla/websocket"
 )
 

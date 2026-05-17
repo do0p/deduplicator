@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/dominik/duplicates/internal/scanner"
+	"github.com/do0p/deduplicator/internal/scanner"
 )
 
 type DuplicateGroup struct {

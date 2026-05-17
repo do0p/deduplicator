@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/dominik/duplicates/internal/scanner"
+	"github.com/do0p/deduplicator/internal/scanner"
 )
 
 func rec(hash uint64) scanner.FileRecord {

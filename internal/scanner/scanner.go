@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/corona10/goimagehash"
-	"github.com/dominik/duplicates/internal/phashcache"
+	"github.com/do0p/deduplicator/internal/phashcache"
 	_ "golang.org/x/image/bmp"
 	_ "golang.org/x/image/tiff"
 	_ "golang.org/x/image/webp"

@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/dominik/duplicates/internal/phashcache"
-	"github.com/dominik/duplicates/internal/server"
-	"github.com/dominik/duplicates/internal/store"
+	"github.com/do0p/deduplicator/internal/phashcache"
+	"github.com/do0p/deduplicator/internal/server"
+	"github.com/do0p/deduplicator/internal/store"
 )
 
 //go:embed web
