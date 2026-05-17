@@ -876,6 +876,7 @@ function renderModalInfo(info) {
 }
 
 function closeModal() {
+  sliderSet('', false);
   if (modalReleaseTrap) { modalReleaseTrap(); modalReleaseTrap = null; }
   if (modalTriggerEl) { modalTriggerEl.focus(); modalTriggerEl = null; }
   $('modal').classList.remove('open');
@@ -903,34 +904,70 @@ document.addEventListener('keydown', e => {
 
 // ---- Modal swipe gestures (touch screens) ----
 let swipeTouchStart = null;
+let swipeAxis = null;
+const mediaSlider = $('modal-media-slider');
+
+function sliderSet(transform, animated) {
+  if (animated) mediaSlider.classList.remove('no-transition');
+  else mediaSlider.classList.add('no-transition');
+  mediaSlider.style.transform = transform;
+}
+
+function commitSwipe(outTransform, inTransform, action) {
+  sliderSet(outTransform, true);
+  mediaSlider.addEventListener('transitionend', function once() {
+    sliderSet(inTransform, false);
+    action();
+    requestAnimationFrame(() => requestAnimationFrame(() => sliderSet('', true)));
+  }, { once: true });
+}
+
 $('modal-content').addEventListener('touchstart', e => {
   if (e.target.closest('.modal-info')) { swipeTouchStart = null; return; }
+  swipeAxis = null;
   const t = e.changedTouches[0];
   swipeTouchStart = { x: t.clientX, y: t.clientY };
 }, { passive: true });
+
+$('modal-content').addEventListener('touchmove', e => {
+  if (!swipeTouchStart) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - swipeTouchStart.x;
+  const dy = t.clientY - swipeTouchStart.y;
+  const absDx = Math.abs(dx), absDy = Math.abs(dy);
+  if (!swipeAxis && (absDx > 8 || absDy > 8)) swipeAxis = absDx >= absDy ? 'h' : 'v';
+  if (!swipeAxis) return;
+  if (swipeAxis === 'h') sliderSet(`translateX(${dx}px)`, false);
+  else sliderSet(`translateY(${dy}px)`, false);
+}, { passive: true });
+
 $('modal-content').addEventListener('touchend', e => {
   if (!swipeTouchStart) return;
   const t = e.changedTouches[0];
   const dx = t.clientX - swipeTouchStart.x;
   const dy = t.clientY - swipeTouchStart.y;
   swipeTouchStart = null;
-  const absDx = Math.abs(dx), absDy = Math.abs(dy);
-  if (absDx < 40 && absDy < 40) return;
-  if (absDx >= absDy) {
-    // horizontal: navigate within group
-    if (dx < 0 && modalFileIndex < modalFiles.length - 1)
-      openModal(modalFiles[++modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex);
-    else if (dx > 0 && modalFileIndex > 0)
-      openModal(modalFiles[--modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex);
-  } else if (modalGroupList && modalGroupIndex >= 0) {
-    // vertical: navigate between groups (results view only)
-    if (dy < 0 && modalGroupIndex < modalGroupList.length - 1) {
+  if (!swipeAxis) return;
+  const threshold = 40;
+
+  if (swipeAxis === 'h') {
+    if (dx < -threshold && modalFileIndex < modalFiles.length - 1)
+      commitSwipe('translateX(-110%)', 'translateX(110%)', () =>
+        openModal(modalFiles[++modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex));
+    else if (dx > threshold && modalFileIndex > 0)
+      commitSwipe('translateX(110%)', 'translateX(-110%)', () =>
+        openModal(modalFiles[--modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex));
+    else sliderSet('', true);
+  } else {
+    if (dy < -threshold && modalGroupList && modalGroupIndex < modalGroupList.length - 1) {
       const g = modalGroupList[modalGroupIndex + 1];
-      openModal(g.files[0].path, g.files, 0, makeResultsCheckCallback(), p => selectedPaths.has(p), modalGroupList, modalGroupIndex + 1);
-    } else if (dy > 0 && modalGroupIndex > 0) {
+      commitSwipe('translateY(-110%)', 'translateY(110%)', () =>
+        openModal(g.files[0].path, g.files, 0, makeResultsCheckCallback(), p => selectedPaths.has(p), modalGroupList, modalGroupIndex + 1));
+    } else if (dy > threshold && modalGroupList && modalGroupIndex > 0) {
       const g = modalGroupList[modalGroupIndex - 1];
-      openModal(g.files[0].path, g.files, 0, makeResultsCheckCallback(), p => selectedPaths.has(p), modalGroupList, modalGroupIndex - 1);
-    }
+      commitSwipe('translateY(110%)', 'translateY(-110%)', () =>
+        openModal(g.files[0].path, g.files, 0, makeResultsCheckCallback(), p => selectedPaths.has(p), modalGroupList, modalGroupIndex - 1));
+    } else sliderSet('', true);
   }
 }, { passive: true });
 
