@@ -379,6 +379,11 @@ tbody td { padding: 0.55rem 0.75rem; vertical-align: middle; }
   padding: 1.5rem;
   overflow: hidden;
 }
+@media (hover: hover) {
+  .modal-img-wrap { cursor: grab; }
+  .modal-img-wrap:active { cursor: grabbing; }
+  #modal-video { cursor: auto; }
+}
 
 .modal-media-slider {
   width: 100%;

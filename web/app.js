@@ -1095,6 +1095,139 @@ $('modal-content').addEventListener('touchcancel', () => {
   sliderSet('', true);
 }, { passive: true });
 
+// ---- Desktop mouse swipe + zoom (trackpad & mouse) ----
+if (window.matchMedia('(hover: hover)').matches) {
+  let deskMode = null; // 'swipe' | 'pan'
+  let deskStart = null;
+  let deskAxis = null;
+  let deskDragged = false;
+  let deskClickTimer = null;
+
+  imgWrapEl.addEventListener('mousedown', e => {
+    if (e.button !== 0 || e.target.closest('button, input, video')) return;
+    e.preventDefault();
+    deskAxis = null; deskDragged = false;
+    if (zoomScale > 1) {
+      deskMode = 'pan';
+      deskStart = { x: e.clientX, y: e.clientY, tx: zoomTx, ty: zoomTy };
+    } else {
+      deskMode = 'swipe';
+      deskStart = { x: e.clientX, y: e.clientY };
+    }
+    document.addEventListener('mousemove', onDeskMove);
+    document.addEventListener('mouseup', onDeskUp, { once: true });
+  });
+
+  function onDeskMove(e) {
+    if (!deskStart) return;
+    const dx = e.clientX - deskStart.x, dy = e.clientY - deskStart.y;
+    if (!deskDragged && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) deskDragged = true;
+    if (!deskDragged) return;
+    if (deskMode === 'pan') {
+      zoomTx = deskStart.tx + dx; zoomTy = deskStart.ty + dy;
+      applyZoom(); return;
+    }
+    const absDx = Math.abs(dx), absDy = Math.abs(dy);
+    if (!deskAxis && (absDx > 8 || absDy > 8)) deskAxis = absDx >= absDy ? 'h' : 'v';
+    if (!deskAxis) return;
+    if (deskAxis === 'h') sliderSet(`translateX(${dx}px)`, false);
+    else sliderSet(`translateY(${dy}px)`, false);
+  }
+
+  function onDeskUp(e) {
+    document.removeEventListener('mousemove', onDeskMove);
+    if (!deskStart) return;
+    const dx = e.clientX - deskStart.x, dy = e.clientY - deskStart.y;
+    const mode = deskMode, axis = deskAxis;
+    deskMode = null; deskStart = null; deskAxis = null;
+    if (!deskDragged) return; // click — handled by click event
+    if (mode === 'pan') return;
+    if (!axis) { sliderSet('', true); return; }
+    const threshold = 60;
+    if (axis === 'h') {
+      if (dx < -threshold && modalFileIndex < modalFiles.length - 1)
+        commitSwipe('translateX(-110%)', 'translateX(110%)', () =>
+          { resetZoom(); openModal(modalFiles[++modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex); });
+      else if (dx > threshold && modalFileIndex > 0)
+        commitSwipe('translateX(110%)', 'translateX(-110%)', () =>
+          { resetZoom(); openModal(modalFiles[--modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex); });
+      else sliderSet('', true);
+    } else {
+      if (dy < -threshold && modalGroupList && modalGroupIndex < modalGroupList.length - 1) {
+        const g = modalGroupList[modalGroupIndex + 1];
+        commitSwipe('translateY(-110%)', 'translateY(110%)', () =>
+          { resetZoom(); openModal(g.files[0].path, g.files, 0, makeResultsCheckCallback(), p => selectedPaths.has(p), modalGroupList, modalGroupIndex + 1); });
+      } else if (dy > threshold && modalGroupList && modalGroupIndex > 0) {
+        const g = modalGroupList[modalGroupIndex - 1];
+        commitSwipe('translateY(110%)', 'translateY(-110%)', () =>
+          { resetZoom(); openModal(g.files[0].path, g.files, 0, makeResultsCheckCallback(), p => selectedPaths.has(p), modalGroupList, modalGroupIndex - 1); });
+      } else sliderSet('', true);
+    }
+  }
+
+  imgWrapEl.addEventListener('click', e => {
+    if (deskDragged || e.target.closest('button, input')) return;
+    if (zoomScale > 1) { resetZoom(true); return; }
+    if (deskClickTimer) {
+      clearTimeout(deskClickTimer); deskClickTimer = null;
+      const rect = imgWrapEl.getBoundingClientRect();
+      const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+      zoomScale = 2.5; zoomTx = cx * (1 - 2.5); zoomTy = cy * (1 - 2.5);
+      zoomWrap.style.transition = 'transform 0.25s ease';
+      applyZoom();
+      setTimeout(() => { zoomWrap.style.transition = ''; }, 260);
+    } else {
+      deskClickTimer = setTimeout(() => { deskClickTimer = null; }, 300);
+    }
+  });
+
+  let wheelAccX = 0, wheelAccY = 0, wheelTimer = null;
+  imgWrapEl.addEventListener('wheel', e => {
+    e.preventDefault();
+    if (e.ctrlKey) {
+      const rect = imgWrapEl.getBoundingClientRect();
+      const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+      const newScale = Math.min(5, Math.max(1, zoomScale * Math.exp(-e.deltaY * 0.008)));
+      const ratio = newScale / zoomScale;
+      zoomTx = cx - (cx - zoomTx) * ratio;
+      zoomTy = cy - (cy - zoomTy) * ratio;
+      zoomScale = newScale;
+      if (zoomScale < 1.05) { zoomScale = 1; zoomTx = 0; zoomTy = 0; }
+      applyZoom(); return;
+    }
+    if (zoomScale > 1) {
+      zoomTx -= e.deltaX; zoomTy -= e.deltaY;
+      applyZoom(); return;
+    }
+    wheelAccX += e.deltaX; wheelAccY += e.deltaY;
+    clearTimeout(wheelTimer);
+    wheelTimer = setTimeout(() => { wheelAccX = 0; wheelAccY = 0; }, 200);
+    const threshold = 80;
+    if (Math.abs(wheelAccX) >= threshold && Math.abs(wheelAccX) >= Math.abs(wheelAccY)) {
+      const dir = wheelAccX > 0 ? 1 : -1;
+      wheelAccX = 0; wheelAccY = 0; clearTimeout(wheelTimer);
+      if (dir > 0 && modalFileIndex < modalFiles.length - 1)
+        commitSwipe('translateX(-110%)', 'translateX(110%)', () =>
+          { resetZoom(); openModal(modalFiles[++modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex); });
+      else if (dir < 0 && modalFileIndex > 0)
+        commitSwipe('translateX(110%)', 'translateX(-110%)', () =>
+          { resetZoom(); openModal(modalFiles[--modalFileIndex].path, modalFiles, modalFileIndex, modalCheckCallback, modalGetChecked, modalGroupList, modalGroupIndex); });
+    } else if (Math.abs(wheelAccY) >= threshold && Math.abs(wheelAccY) > Math.abs(wheelAccX)) {
+      const dir = wheelAccY > 0 ? 1 : -1;
+      wheelAccX = 0; wheelAccY = 0; clearTimeout(wheelTimer);
+      if (dir > 0 && modalGroupList && modalGroupIndex < modalGroupList.length - 1) {
+        const g = modalGroupList[modalGroupIndex + 1];
+        commitSwipe('translateY(-110%)', 'translateY(110%)', () =>
+          { resetZoom(); openModal(g.files[0].path, g.files, 0, makeResultsCheckCallback(), p => selectedPaths.has(p), modalGroupList, modalGroupIndex + 1); });
+      } else if (dir < 0 && modalGroupList && modalGroupIndex > 0) {
+        const g = modalGroupList[modalGroupIndex - 1];
+        commitSwipe('translateY(110%)', 'translateY(-110%)', () =>
+          { resetZoom(); openModal(g.files[0].path, g.files, 0, makeResultsCheckCallback(), p => selectedPaths.has(p), modalGroupList, modalGroupIndex - 1); });
+      }
+    }
+  }, { passive: false });
+}
+
 // ---- Sorting ----
 document.querySelectorAll('thead th[data-col]').forEach(th => {
   th.addEventListener('click', () => {
