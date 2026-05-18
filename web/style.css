@@ -412,6 +412,7 @@ tbody td { padding: 0.55rem 0.75rem; vertical-align: middle; }
   object-fit: contain;
   border-radius: 4px;
 }
+#modal-img { transition: opacity 0.18s ease; }
 
 .modal-info {
   width: 300px;

@@ -785,9 +785,13 @@ async function openModal(path, files = null, index = 0, checkCallback = null, ge
     $('modal-video').style.display = '';
     $('modal-video').src = url;
   } else {
-    $('modal-img').style.display = '';
+    const imgEl = $('modal-img');
+    imgEl.style.display = '';
     $('modal-video').style.display = 'none';
-    $('modal-img').src = url;
+    imgEl.style.opacity = '0';
+    imgEl.onload = () => { imgEl.style.opacity = '1'; };
+    imgEl.onerror = () => { imgEl.style.opacity = '1'; };
+    imgEl.src = url;
   }
 
   const hasNav = modalFiles.length > 1;
