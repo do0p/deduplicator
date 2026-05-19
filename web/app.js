@@ -519,6 +519,9 @@ $('btn-apply').addEventListener('click', async () => {
   if (!confirmed) return;
 
   const endpoint = action === 'accept' ? '/api/accept' : '/api/trash';
+  const spinner = $('action-spinner');
+  $('spinner-label').textContent = action === 'trash' ? 'Moving files…' : 'Accepting files…';
+  spinner.classList.add('open');
   try {
     const res = await fetch(endpoint, {
       method: 'POST',
@@ -544,6 +547,8 @@ $('btn-apply').addEventListener('click', async () => {
     $('action-select').value = '';
   } catch (err) {
     alert('Request failed: ' + err.message);
+  } finally {
+    spinner.classList.remove('open');
   }
 });
 
