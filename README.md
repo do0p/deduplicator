@@ -1,5 +1,7 @@
 # Deduplicator
 
+![Deduplicator](resources/PACKAGE_ICON.PNG)
+
 A self-hosted Docker application that finds duplicate images and videos in large collections (100k+ files). It uses perceptual hashing (pHash) for images — so it catches resized, re-compressed, or renamed duplicates — and SHA-256 content hashing for videos. The entire UI runs in your browser; no account, no cloud, no data leaves your machine.
 
 ---
@@ -49,6 +51,33 @@ Copy `docker-compose.yml`, edit the volume paths, then:
 ```bash
 docker compose up -d
 ```
+
+### As a Synology package
+
+You can install Deduplicator as a native package on a Synology NAS (DSM 7+) without Docker.
+
+**Prerequisites:** Go 1.25+, ImageMagick (for icon generation — only needed once).
+
+**Build the `.spk` package:**
+
+```bash
+./build-spk.sh
+```
+
+This cross-compiles the binary for `linux/amd64`, bundles the icons from `resources/`, and produces `deduplicator-<version>.spk`.
+
+**Install on the NAS:**
+
+1. Open **Package Center** in DSM
+2. Click **Manual Install** (top right) and upload the `.spk` file
+3. A setup wizard will prompt for:
+   - **Photo library path** — root directory to scan (e.g. `/volume1`)
+   - **Recycle bin path** — where deleted duplicates are moved (leave empty to disable)
+4. After installation, click **Open** to launch the UI
+
+The app runs on port **5090**. Persistent data (accepted list, recycle bin records) is stored at `/var/packages/deduplicator/var/`.
+
+> **Note:** DSM will warn that the package is from an unknown publisher. To allow it: Package Center → Settings → Trust Level → set to **Any publisher**.
 
 ### Build from source
 
