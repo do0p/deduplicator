@@ -36,7 +36,6 @@ adminprotocol="http"
 adminurl="/"
 EOF
 
-# conf/privilege — tells DSM the package does not run as root
 mkdir -p "${WORK_DIR}/conf"
 cat > "${WORK_DIR}/conf/privilege" <<'PRIVILEGE'
 {
@@ -85,15 +84,20 @@ WIZARD
 mkdir -p "${WORK_DIR}/scripts"
 
 # postinst — saves wizard values to a config file after installation
+# On upgrade, var/ is a symlink to /volume1/@appdata/deduplicator which survives the
+# package wipe, so the config already exists — skip writing wizard values in that case.
 cat > "${WORK_DIR}/scripts/postinst" <<'SCRIPT'
 #!/bin/sh
-DATA_DIR="/var/packages/deduplicator/var"
-mkdir -p "${DATA_DIR}"
-cat > "${DATA_DIR}/config" <<EOF
+PKG_VAR="/var/packages/deduplicator/var"
+CONFIG="${PKG_VAR}/config"
+
+if [ ! -f "${CONFIG}" ]; then
+    mkdir -p "${PKG_VAR}"
+    cat > "${CONFIG}" <<EOF
 MOUNT_ROOT="${wizard_mount_root}"
 RECYCLE_BIN="${wizard_recycle_bin}"
 EOF
-chmod a+rwx "${DATA_DIR}"
+fi
 SCRIPT
 chmod +x "${WORK_DIR}/scripts/postinst"
 
@@ -101,19 +105,19 @@ chmod +x "${WORK_DIR}/scripts/postinst"
 cat > "${WORK_DIR}/scripts/start-stop-status" <<'SCRIPT'
 #!/bin/sh
 PACKAGE_DIR="/var/packages/deduplicator"
-DATA_DIR="${PACKAGE_DIR}/var"
-PID_FILE="${DATA_DIR}/deduplicator.pid"
-LOG_FILE="${DATA_DIR}/deduplicator.log"
+PKG_VAR="${PACKAGE_DIR}/var"
+PID_FILE="${PKG_VAR}/deduplicator.pid"
+LOG_FILE="${PKG_VAR}/deduplicator.log"
 BINARY="${PACKAGE_DIR}/target/bin/deduplicator"
-CONFIG="${DATA_DIR}/config"
+CONFIG="${PKG_VAR}/config"
 
 [ -f "${CONFIG}" ] && . "${CONFIG}"
 
 start() {
-    mkdir -p "${DATA_DIR}"
+    mkdir -p "${PKG_VAR}"
     rm -f "${LOG_FILE}" "${PID_FILE}" 2>/dev/null || true
     MOUNT_ROOT="${MOUNT_ROOT:-/volume1}" \
-    DATA_DIR="${DATA_DIR}" \
+    DATA_DIR="${PKG_VAR}" \
     PORT=5090 \
     RECYCLE_BIN="${RECYCLE_BIN}" \
     "${BINARY}" >> "${LOG_FILE}" 2>&1 &
