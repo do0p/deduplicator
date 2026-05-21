@@ -6,6 +6,7 @@ let allGroups = [];
 let currentFilteredGroups = [];
 let sortCol = 'size';
 let sortAsc = false;
+let autoSelectFolder = '';
 let expandedRow = null;
 let selectedPaths = new Set();
 let recycleBinEnabled = false;
@@ -583,6 +584,32 @@ function isExactGroup(g) {
   return !!h && g.files.every(f => f.contentHash === h);
 }
 
+function fileInFolder(filePath, folder) {
+  return filePath.startsWith(folder + '/');
+}
+
+function buildFolderDatalist(groups) {
+  const folders = new Set();
+  for (const g of groups) {
+    for (const f of g.files) {
+      let dir = f.path;
+      while (true) {
+        const slash = dir.lastIndexOf('/');
+        if (slash <= 0) break;
+        dir = dir.substring(0, slash);
+        folders.add(dir);
+      }
+    }
+  }
+  const dl = $('folder-options');
+  dl.innerHTML = '';
+  [...folders].sort().forEach(folder => {
+    const opt = document.createElement('option');
+    opt.value = folder;
+    dl.appendChild(opt);
+  });
+}
+
 function renderResults() {
   const filter = ($('filter-input').value || '').toLowerCase();
 
@@ -590,6 +617,12 @@ function renderResults() {
     if (exactOnly && !isExactGroup(g)) return false;
     return !filter || g.files.some(f => f.path.toLowerCase().includes(filter));
   });
+
+  buildFolderDatalist(groups);
+
+  if (autoSelectFolder) {
+    groups = groups.filter(g => g.files.some(f => fileInFolder(f.path, autoSelectFolder)));
+  }
 
   groups.sort((a, b) => {
     let va, vb;
@@ -622,6 +655,15 @@ function renderResults() {
   }
   $('no-results').style.display = 'none';
   currentFilteredGroups = groups;
+
+  if (autoSelectFolder) {
+    selectedPaths.clear();
+    for (const g of groups) {
+      const matches = g.files.filter(f => fileInFolder(f.path, autoSelectFolder));
+      if (matches.length === 1) selectedPaths.add(matches[0].path);
+    }
+    updateActionBar();
+  }
 
   groups.forEach((g, idx) => {
     const rep = g.files[0];
@@ -1260,6 +1302,10 @@ document.querySelectorAll('thead th[data-col]').forEach(th => {
 // ---- Filter ----
 $('filter-input').addEventListener('input', renderResults);
 $('exact-only').addEventListener('change', e => { exactOnly = e.target.checked; renderResults(); });
+$('auto-select-folder').addEventListener('input', () => {
+  autoSelectFolder = $('auto-select-folder').value.trim().replace(/\/$/, '');
+  renderResults();
+});
 
 // ---- Threshold slider (results page) ----
 let rematchTimeout = null;
